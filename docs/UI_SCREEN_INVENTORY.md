@@ -40,3 +40,23 @@ References 104–113 (confirmed from the current design sequence):
 | `05-authentication/05-email-otp-verification.png` | Email OTP Verification | Auth Shell | `/verify-otp` | Supabase Auth `verifyOtp` | **Implemented** |
 | `05-authentication/06-select-restaurant-outlet.png` | Select Restaurant & Outlet | Multi-Role | `/select-outlet` | `GET /v1/auth/me`, `POST /v1/auth/select-outlet` | **Implemented** |
 | `05-authentication/07-access-denied.png` | 403 Forbidden Access Denied | Shell | `/access-denied` | Client-side error boundary + RBAC guards | **Implemented** |
+
+## Implemented Customer QR Menu & Ordering Screens (Phase C & C.1)
+| Ref/Asset | Screen Name | Role | Route | Backend API Dependency | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `01-customer/01-landing-table-selection.png` | QR Token Resolver & Table Activation | Diner | `/table/[qrToken]` | `POST /v1/customer/table-sessions/resolve-qr` | **Implemented** |
+| `01-customer/02-digital-menu-browsing.png` | Digital Customer Menu | Diner | `/[tenantSlug]/menu` | `GET /v1/customer/menu` | **Implemented** |
+| `01-customer/03-item-detail-customization.png` | Item Detail & Modifiers Modal | Diner | Modal in `/[tenantSlug]/menu` | `GET /v1/customer/menu` | **Implemented** |
+| `01-customer/04-order-cart-review.png` | Diner Cart & Bill Breakdown | Diner | `/[tenantSlug]/cart` | `POST /v1/customer/orders` | **Implemented** |
+| `01-customer/05-order-status-tracking.png` | Live Kitchen Tracker & Consolidated Bill | Diner | `/[tenantSlug]/order/[orderId]` | `GET /v1/customer/orders/:orderId` | **Implemented** |
+
+## Implemented Staff Operations & KDS Screens (Phase D)
+| Ref/Asset | Screen Name | Role | Route | Backend API Dependency | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `02-staff/01-reception-dashboard.png` | Staff Reception Dashboard | Receptionist / Manager | `/staff/reception` | `GET /v1/staff/orders`, `PATCH /v1/staff/orders/:id/status` | **Implemented** |
+| `02-staff/02-order-details-processing.png` | Staff Order Detail & Actions Modal | Staff | Modal in `/staff/reception` | `GET /v1/staff/orders/:id`, `PATCH /v1/staff/orders/:id/status` | **Implemented** |
+| `02-staff/03-kitchen-display-system.png` | Kitchen Display System (KDS) Lanes | Chef / Kitchen Staff | `/staff/kitchen` | `GET /v1/staff/orders`, `PATCH /v1/staff/orders/:id/status` | **Implemented** |
+| `02-staff/04-waiter-table-service.png` | Waiter Table Service & Ready Queue | Waiter / Runner | `/staff/waiter` | `GET /v1/staff/orders`, `PATCH /v1/staff/orders/:id/pickup`, `PATCH /v1/staff/orders/:id/served` | **Implemented** |
+| `02-staff/13-kitchen-display-system.png` | KDS High-Contrast Cooking View | Kitchen Staff | `/staff/kitchen` | `GET /v1/staff/orders`, `PATCH /v1/staff/orders/:id/eta` | **Implemented** |
+| `02-staff/14-waiter-service-dashboard.png` | Waiter Service Dashboard | Waiter | `/staff/waiter` | `GET /v1/staff/orders`, `PATCH /v1/staff/orders/:id/served` | **Implemented** |
+| `02-staff/18-order-cancellation-confirmation.png` | Order Cancellation / Rejection Modal | Staff | Reusable Staff Modal | `PATCH /v1/staff/orders/:id/status` | **Implemented** |

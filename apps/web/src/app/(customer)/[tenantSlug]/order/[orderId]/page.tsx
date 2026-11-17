@@ -176,7 +176,7 @@ export default function OrderTrackingPage() {
         </div>
 
         {/* Chef ETA Banner */}
-        {order.chefEtaMinutes && order.status !== 'SERVED' && order.status !== 'COMPLETED' && (
+        {order.chefEtaMinutes && order.status !== 'SERVED' && order.status !== 'COMPLETED' && order.status !== 'REJECTED' && order.status !== 'CANCELLED' && (
           <div className="mt-4 flex items-center gap-3 rounded-xl border border-orange-200 bg-orange-50/70 p-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-orange-600 text-white">
               <Clock className="h-5 w-5" />
@@ -187,6 +187,24 @@ export default function OrderTrackingPage() {
                 ~{order.chefEtaMinutes} minutes until ready
               </span>
             </div>
+          </div>
+        )}
+
+        {/* Rejection / Cancellation Banner */}
+        {(order.status === 'REJECTED' || order.status === 'CANCELLED') && (
+          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-4">
+            <div className="flex items-center gap-2 text-red-700 font-bold text-sm">
+              <AlertCircle className="h-5 w-5" />
+              <span>Order {order.status === 'REJECTED' ? 'Rejected' : 'Cancelled'}</span>
+            </div>
+            {(order.rejectionReason || order.cancellationReason) && (
+              <p className="mt-1 text-xs text-red-600 font-medium">
+                Reason: {order.rejectionReason || order.cancellationReason}
+              </p>
+            )}
+            <p className="mt-2 text-[11px] text-red-500">
+              Please contact restaurant staff or place a new order from the menu.
+            </p>
           </div>
         )}
       </div>

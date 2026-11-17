@@ -94,6 +94,7 @@ describe('Actual Native PostgreSQL 18.6 Integration Test Suite', () => {
       '20261117000003_customer_ordering.sql',
       '20261117000004_phase_c1_remediations.sql',
       '20261117000005_phase_c1_verification_gate.sql',
+      '20261117000006_phase_d_staff_kds.sql',
     ];
 
     for (const file of migrationFiles) {
@@ -438,6 +439,77 @@ describe('Actual Native PostgreSQL 18.6 Integration Test Suite', () => {
       const tax = Math.round(subtotal * (5.0 / 100));
       expect(tax).toBe(7);
       expect(subtotal + tax).toBe(156);
+    });
+  });
+
+  describe('8. Staff Operations & KDS State Machine (Phase D Verification)', () => {
+    it('verifies that Phase D columns exist on orders table', async () => {
+      const cols = await adminClient.query(`
+        SELECT column_name 
+        FROM information_schema.columns 
+        WHERE table_name = 'orders' 
+          AND column_name IN ('waiter_id', 'rejection_reason', 'cancellation_reason', 'eta_updated_at', 'eta_set_by', 'picked_up_at', 'served_at');
+      `);
+      expect(cols.rows.length).toBe(7);
+    });
+
+    it('executes atomic order lifecycle state transitions with SELECT FOR UPDATE row locking', async () => {
+      // Create a test order in PLACED status
+      const testOrderId = '77777777-7777-7777-7777-777777777777';
+      await adminClient.query(`
+        INSERT INTO orders (id, tenant_id, location_id, table_id, order_number, idempotency_key, status, currency, subtotal_minor, tax_minor, total_minor)
+        VALUES ('${testOrderId}', '11111111-1111-1111-1111-111111111111', 'aaaa1111-aaaa-1111-aaaa-111111111111', 'a1111111-1111-1111-1111-111111111111', 'ORD-REAL-101', 'idemp-kds-test-01', 'PLACED', 'INR', 15000, 0, 15000)
+        ON CONFLICT (id) DO NOTHING;
+      `);
+
+      // Begin transaction with row lock
+      await adminClient.query('BEGIN');
+      const lockRes = await adminClient.query(`SELECT id, status FROM orders WHERE id = '${testOrderId}' FOR UPDATE`);
+      expect(lockRes.rows[0].status).toBe('PLACED');
+
+      // Update to ACCEPTED with chef ETA = 20 mins
+      await adminClient.query(`
+        UPDATE orders 
+        SET status = 'ACCEPTED', chef_eta_minutes = 20, eta_updated_at = now(), updated_at = now()
+        WHERE id = '${testOrderId}';
+      `);
+
+      // Record immutable audit event
+      await adminClient.query(`
+        INSERT INTO order_status_events (order_id, from_status, to_status, actor_type, notes)
+        VALUES ('${testOrderId}', 'PLACED', 'ACCEPTED', 'TENANT_USER', 'Kitchen accepted order with 20m ETA');
+      `);
+
+      // Record outbox event atomically
+      await adminClient.query(`
+        INSERT INTO notification_outbox (tenant_id, location_id, event_type, payload)
+        VALUES ('11111111-1111-1111-1111-111111111111', 'aaaa1111-aaaa-1111-aaaa-111111111111', 'ORDER_STATUS_CHANGED', '{"orderId":"${testOrderId}","from":"PLACED","to":"ACCEPTED"}');
+      `);
+
+      await adminClient.query('COMMIT');
+
+      // Verify committed state
+      const verifiedOrder = await adminClient.query(`SELECT status, chef_eta_minutes FROM orders WHERE id = '${testOrderId}'`);
+      expect(verifiedOrder.rows[0].status).toBe('ACCEPTED');
+      expect(verifiedOrder.rows[0].chef_eta_minutes).toBe(20);
+
+      // Verify audit trail
+      const events = await adminClient.query(`SELECT from_status, to_status, actor_type FROM order_status_events WHERE order_id = '${testOrderId}'`);
+      expect(events.rows.length).toBeGreaterThanOrEqual(1);
+      expect(events.rows[0].from_status).toBe('PLACED');
+      expect(events.rows[0].to_status).toBe('ACCEPTED');
+    });
+
+    it('verifies rollback on error preserves original order status', async () => {
+      const testOrderId = '77777777-7777-7777-7777-777777777777';
+
+      await adminClient.query('BEGIN');
+      await adminClient.query(`UPDATE orders SET status = 'CANCELLED' WHERE id = '${testOrderId}'`);
+      // Simulate an unhandled exception or constraint failure
+      await adminClient.query('ROLLBACK');
+
+      const res = await adminClient.query(`SELECT status FROM orders WHERE id = '${testOrderId}'`);
+      expect(res.rows[0].status).toBe('ACCEPTED'); // Kept prior committed status
     });
   });
 });

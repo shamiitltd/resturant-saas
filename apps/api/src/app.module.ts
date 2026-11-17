@@ -3,6 +3,7 @@ import { DatabaseModule } from './database/database.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { TenantModule } from './modules/tenant/tenant.module.js';
 import { CustomerModule } from './modules/customer/customer.module.js';
+import { StaffModule } from './modules/staff/staff.module.js';
 import { PlatformController } from './modules/platform/platform.controller.js';
 import { TenantContextMiddleware } from './modules/tenant/tenant-context.middleware.js';
 
@@ -12,6 +13,7 @@ import { TenantContextMiddleware } from './modules/tenant/tenant-context.middlew
     AuthModule,
     TenantModule,
     CustomerModule,
+    StaffModule,
   ],
   controllers: [PlatformController],
 })

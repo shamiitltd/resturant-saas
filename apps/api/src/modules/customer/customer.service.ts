@@ -594,13 +594,15 @@ export class CustomerService {
       discount_minor: number;
       total_minor: number;
       chef_eta_minutes: number | null;
+      rejection_reason: string | null;
+      cancellation_reason: string | null;
       special_instructions: string | null;
       created_at: Date;
       tax_rate_percent: string | number | null;
     }>(
       `SELECT o.id, o.order_number, o.table_session_id, rt.table_code, rt.label as table_label,
               o.status, o.currency, o.subtotal_minor, o.tax_minor, o.discount_minor, o.total_minor,
-              o.chef_eta_minutes, o.special_instructions, o.created_at,
+              o.chef_eta_minutes, o.rejection_reason, o.cancellation_reason, o.special_instructions, o.created_at,
               t.tax_rate_percent as tax_rate_percent
        FROM orders o
        LEFT JOIN restaurant_tables rt ON rt.id = o.table_id
@@ -643,6 +645,8 @@ export class CustomerService {
       discountMinor: o.discount_minor,
       totalMinor: o.total_minor,
       chefEtaMinutes: o.chef_eta_minutes || undefined,
+      rejectionReason: o.rejection_reason || undefined,
+      cancellationReason: o.cancellation_reason || undefined,
       specialInstructions: o.special_instructions || undefined,
       createdAt: new Date(o.created_at).toISOString(),
       items: itemsRes.rows.map((item) => ({
@@ -674,13 +678,15 @@ export class CustomerService {
       discount_minor: number;
       total_minor: number;
       chef_eta_minutes: number | null;
+      rejection_reason: string | null;
+      cancellation_reason: string | null;
       special_instructions: string | null;
       created_at: Date;
       tax_rate_percent: string | number | null;
     }>(
       `SELECT o.id, o.order_number, o.table_session_id, rt.table_code, rt.label as table_label,
               o.status, o.currency, o.subtotal_minor, o.tax_minor, o.discount_minor, o.total_minor,
-              o.chef_eta_minutes, o.special_instructions, o.created_at,
+              o.chef_eta_minutes, o.rejection_reason, o.cancellation_reason, o.special_instructions, o.created_at,
               t.tax_rate_percent as tax_rate_percent
        FROM orders o
        LEFT JOIN restaurant_tables rt ON rt.id = o.table_id
@@ -722,6 +728,8 @@ export class CustomerService {
       discountMinor: o.discount_minor,
       totalMinor: o.total_minor,
       chefEtaMinutes: o.chef_eta_minutes || undefined,
+      rejectionReason: o.rejection_reason || undefined,
+      cancellationReason: o.cancellation_reason || undefined,
       specialInstructions: o.special_instructions || undefined,
       createdAt: new Date(o.created_at).toISOString(),
       items: itemsRes.rows.map((item) => ({
