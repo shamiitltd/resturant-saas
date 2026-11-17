@@ -2,7 +2,18 @@
 
 Use this document to connect every numbered UI reference to product behavior and backend scope. Do not invent requirement IDs. Copy exact IDs from PRD v1.1.
 
-| Ref | Screen name | Role | Route | PRD requirement IDs | API/data dependencies | Permission scope | Status |
+## Phase B: Core Authentication & Access Control Mapping
+| Asset Path | Screen Name | Role | Route | PRD Requirement IDs | API / Data Dependencies | Permission Scope | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `05-authentication/01-login.png` | Staff & Owner Login | Auth Shell | `/login` | `FR-STA-01`, `FR-SA-01` | Supabase Auth, `GET /v1/auth/me` | Public / Authenticated | **Implemented** |
+| `05-authentication/02-owner-registration.png` | Owner & Tenant Onboarding | Owner | `/register` | `FR-TEN-01`, `FR-TEN-04`, `FR-TEN-05` | Supabase Auth, `POST /v1/auth/register-owner` | Public | **Implemented** |
+| `05-authentication/05-email-otp-verification.png` | Email OTP Verification | Auth Shell | `/verify-otp` | `FR-STA-01`, `NFR-05` | Supabase Auth `verifyOtp` | Public | **Implemented** |
+| `05-authentication/06-select-restaurant-outlet.png` | Select Restaurant & Outlet | Multi-Role | `/select-outlet` | `FR-TEN-02`, `FR-STA-02` | `GET /v1/auth/me`, `POST /v1/auth/select-outlet` | Authenticated Staff/Owner | **Implemented** |
+| `05-authentication/07-access-denied.png` | 403 Forbidden Access Denied | Shell | `/access-denied` | `NFR-01`, `BR-02` | Client-side error boundary + RBAC guards | Authenticated | **Implemented** |
+
+---
+
+## 113 UI References Traceability Matrix
 |---:|---|---|---|---|---|---|---|
 | 001–103 | Populate from the existing approved screen references | Pending mapping | Pending | Pending | Pending | Tenant/location/role-specific | Not started |
 | 104 | Reservation Rules, Policies & Automated Reminders | Owner | Pending | Pending mapping | Reservation rules, notification templates and delivery logs | Tenant + authorized location scope | Not started |

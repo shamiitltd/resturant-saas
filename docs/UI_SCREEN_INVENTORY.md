@@ -31,3 +31,12 @@ References 104–113 (confirmed from the current design sequence):
 - **Reference Anomalies & Boundaries**:
   - `02-staff/17-future-split-bill.png`: Preserved as reference asset, but **STRICTLY OUT OF CURRENT IMPLEMENTATION SCOPE** per ADR-003. Split billing must not be implemented.
   - `02-staff/15-website-visual-editor.png`: Verified exact byte-for-byte duplicate (SHA256: `46A0E82D...`) of `03-owner/15-website-visual-editor.png`. Implementation belongs exclusively to Owner CMS (`FR-OWN-05`).
+
+## Implemented Authentication Screens (Phase B Full-Stack Foundation)
+| Ref/Asset | Screen Name | Role | Route | Backend API Dependency | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `05-authentication/01-login.png` | Staff & Owner Login | Auth Shell | `/login` | Supabase Auth + `GET /v1/auth/me` | **Implemented** |
+| `05-authentication/02-owner-registration.png` | Owner & Tenant Onboarding | Owner | `/register` | Supabase Auth + `POST /v1/auth/register-owner` | **Implemented** |
+| `05-authentication/05-email-otp-verification.png` | Email OTP Verification | Auth Shell | `/verify-otp` | Supabase Auth `verifyOtp` | **Implemented** |
+| `05-authentication/06-select-restaurant-outlet.png` | Select Restaurant & Outlet | Multi-Role | `/select-outlet` | `GET /v1/auth/me`, `POST /v1/auth/select-outlet` | **Implemented** |
+| `05-authentication/07-access-denied.png` | 403 Forbidden Access Denied | Shell | `/access-denied` | Client-side error boundary + RBAC guards | **Implemented** |
