@@ -36,3 +36,26 @@ export async function fetchWithAuth<T>(
 
   return res.json();
 }
+
+export async function publicFetch<T>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const headers = new Headers(options.headers || {});
+  if (!headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  const res = await fetch(`${API_BASE_URL}${endpoint}`, {
+    ...options,
+    headers,
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.message || `Request failed with status ${res.status}`);
+  }
+
+  return res.json();
+}
+
