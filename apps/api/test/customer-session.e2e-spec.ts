@@ -126,7 +126,7 @@ describe('Customer Session & Ordering Flow E2E (ADR-003, QR & Price Invariants)'
       mockDbService.query
         // 1. Tenant lookup
         .mockResolvedValueOnce({
-          rows: [{ id: 'tenant-spice-garden', name: 'Spice Garden', slug: 'spice-garden' }],
+          rows: [{ id: 'tenant-spice-garden', name: 'Spice Garden', slug: 'spice-garden', tax_rate_percent: '5.00' }],
           rowCount: 1,
         })
         // 2. Categories lookup
@@ -167,6 +167,74 @@ describe('Customer Session & Ordering Flow E2E (ADR-003, QR & Price Invariants)'
       expect(res.body.categories[0].items[0].name).toBe('Paneer Tikka');
       expect(res.body.categories[0].items[0].basePriceMinor).toBe(32000);
       expect(res.body.categories[0].items[0].isVegetarian).toBe(true);
+      expect(res.body.taxRatePercent).toBe(5);
+    });
+  });
+
+  describe('Task 1: SEC-AUTH-01 — GET /api/v1/customer/orders/:orderId (Authorization)', () => {
+    it('rejects order retrieval with 401 Unauthorized when session credential header is missing', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/customer/orders/order-uuid-123')
+        .expect(401);
+    });
+
+    it('rejects order retrieval with 403 Forbidden when session token is invalid', async () => {
+      mockDbService.query.mockResolvedValueOnce({ rows: [], rowCount: 0 }); // session not found
+
+      await request(app.getHttpServer())
+        .get('/api/v1/customer/orders/order-uuid-123')
+        .set('x-session-token', 'invalid-token')
+        .expect(403);
+    });
+
+    it('returns order details when valid matching session token is provided', async () => {
+      mockDbService.query
+        // 1. Session check
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: 'sess-uuid-1',
+              tenant_id: 'tenant-1',
+              session_status: 'OPEN',
+              tenant_status: 'ACTIVE',
+            },
+          ],
+          rowCount: 1,
+        })
+        // 2. Order check: WHERE o.id = $1 AND o.table_session_id = $2
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: 'order-uuid-123',
+              order_number: 'ORD-123456',
+              table_session_id: 'sess-uuid-1',
+              table_code: 'T-01',
+              table_label: 'Table 1',
+              status: 'PLACED',
+              currency: 'INR',
+              subtotal_minor: 32000,
+              tax_minor: 1600,
+              tax_rate_percent: '5.00',
+              discount_minor: 0,
+              total_minor: 33600,
+              chef_eta_minutes: null,
+              special_instructions: null,
+              created_at: new Date(),
+            },
+          ],
+          rowCount: 1,
+        })
+        // 3. Order items
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/customer/orders/order-uuid-123')
+        .set('x-session-token', 'sess_live_12345')
+        .expect(200);
+
+      expect(res.body.orderId).toBe('order-uuid-123');
+      expect(res.body.tableSessionId).toBe('sess-uuid-1');
+      expect(res.body.status).toBe('PLACED');
     });
   });
 
@@ -181,6 +249,7 @@ describe('Customer Session & Ordering Flow E2E (ADR-003, QR & Price Invariants)'
               status: 'OPEN',
               table_code: 'T-01',
               table_label: 'Table 1',
+              tax_rate_percent: '5.00',
             },
           ],
           rowCount: 1,
@@ -203,6 +272,7 @@ describe('Customer Session & Ordering Flow E2E (ADR-003, QR & Price Invariants)'
               currency: 'INR',
               subtotal_minor: 32000,
               tax_minor: 1600,
+              tax_rate_percent: '5.00',
               discount_minor: 0,
               total_minor: 33600,
               chef_eta_minutes: null,
@@ -227,6 +297,7 @@ describe('Customer Session & Ordering Flow E2E (ADR-003, QR & Price Invariants)'
               currency: 'INR',
               subtotal_minor: 25000,
               tax_minor: 1250,
+              tax_rate_percent: '5.00',
               discount_minor: 0,
               total_minor: 26250,
               chef_eta_minutes: 10,

@@ -1,4 +1,15 @@
-import { Controller, Post, Get, Body, Param, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Controller,
+  Post,
+  Get,
+  Body,
+  Param,
+  Headers,
+  Query,
+  HttpCode,
+  HttpStatus,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { CustomerService } from './customer.service.js';
 import type {
   ResolveQrRequestDto,
@@ -26,9 +37,20 @@ export class CustomerController {
     return this.customerService.createCustomerOrder(dto);
   }
 
+  /**
+   * SEC-AUTH-01: Order status requires a valid table session credential
+   */
   @Get('customer/orders/:orderId')
-  async getOrder(@Param('orderId') orderId: string) {
-    return this.customerService.getOrderById(orderId);
+  async getOrder(
+    @Param('orderId') orderId: string,
+    @Headers('x-session-token') sessionTokenHeader?: string,
+    @Query('sessionToken') sessionTokenQuery?: string
+  ) {
+    const sessionToken = sessionTokenHeader || sessionTokenQuery;
+    if (!sessionToken || sessionToken.trim() === '') {
+      throw new UnauthorizedException('Valid table session credential is required to view order status');
+    }
+    return this.customerService.getOrderForSession(orderId, sessionToken.trim());
   }
 
   @Get('customer/sessions/:sessionToken/orders')

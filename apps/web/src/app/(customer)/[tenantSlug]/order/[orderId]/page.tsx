@@ -4,7 +4,6 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { publicFetch } from '@/lib/api';
-import { supabase } from '@/lib/supabase';
 import {
   Clock,
   CheckCircle2,
@@ -57,26 +56,40 @@ export default function OrderTrackingPage() {
   const [error, setError] = useState<string | null>(null);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date>(new Date());
 
-  // Function to load authoritative order state from NestJS API
+  // Function to load authoritative order state from NestJS API (SEC-AUTH-01: Session Credential Enforced)
   const loadOrderAndSession = async () => {
     try {
-      const orderData = await publicFetch<CustomerOrderResponseDto>(`/v1/customer/orders/${orderId}`);
-      setOrder(orderData);
-
-      // Load session orders if session token exists
+      let sessionToken: string | undefined;
       try {
         const stored = localStorage.getItem('saas_table_session');
         if (stored) {
           const session = JSON.parse(stored);
-          if (session.sessionToken) {
-            const summary = await publicFetch<TableSessionOrdersSummaryDto>(
-              `/v1/customer/sessions/${session.sessionToken}/orders`
-            );
-            setSessionSummary(summary);
-          }
+          sessionToken = session.sessionToken;
         }
       } catch {
-        // Non-fatal if session summary fails
+        // ignore
+      }
+
+      const headers: Record<string, string> = {};
+      if (sessionToken) {
+        headers['x-session-token'] = sessionToken;
+      }
+
+      const orderData = await publicFetch<CustomerOrderResponseDto>(`/v1/customer/orders/${orderId}`, {
+        headers,
+      });
+      setOrder(orderData);
+
+      // Load session orders if session token exists
+      if (sessionToken) {
+        try {
+          const summary = await publicFetch<TableSessionOrdersSummaryDto>(
+            `/v1/customer/sessions/${sessionToken}/orders`
+          );
+          setSessionSummary(summary);
+        } catch {
+          // Non-fatal if session summary fails
+        }
       }
 
       setLastRefreshedAt(new Date());
@@ -93,30 +106,13 @@ export default function OrderTrackingPage() {
 
     loadOrderAndSession();
 
-    // 1. Supabase Realtime channel subscription for instant status updates
-    const channel = supabase
-      .channel(`order-updates-${orderId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'orders',
-          filter: `id=eq.${orderId}`,
-        },
-        () => {
-          loadOrderAndSession();
-        }
-      )
-      .subscribe();
-
-    // 2. Authoritative polling fallback (every 5 seconds) to guarantee recovery
+    // SEC-RT-01: Authoritative live tracking via 5-second polling interval
+    // Guarantees reconnect recovery, session isolation, and privacy without relying on unauthenticated WebSockets
     const pollInterval = setInterval(() => {
       loadOrderAndSession();
     }, 5000);
 
     return () => {
-      supabase.removeChannel(channel);
       clearInterval(pollInterval);
     };
   }, [orderId]);

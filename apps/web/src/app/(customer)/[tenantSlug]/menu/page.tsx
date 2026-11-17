@@ -23,7 +23,7 @@ function CustomerMenuContent() {
   const router = useRouter();
   const tenantSlug = params.tenantSlug as string;
 
-  const { session, addItem, totalItemCount, totalMinor, items: cartItems } = useCustomerCart();
+  const { session, setSession, addItem, totalItemCount, totalMinor, items: cartItems } = useCustomerCart();
 
   const [menu, setMenu] = useState<PublicMenuResponseDto | null>(null);
   const [loading, setLoading] = useState(true);
@@ -48,6 +48,9 @@ function CustomerMenuContent() {
         const data = await publicFetch<PublicMenuResponseDto>(`/v1/public/menu/${tenantSlug}`);
         if (!isMounted) return;
         setMenu(data);
+        if (session && session.taxRatePercent !== data.taxRatePercent) {
+          setSession({ ...session, taxRatePercent: data.taxRatePercent });
+        }
       } catch (err: any) {
         if (!isMounted) return;
         setError(err.message || 'Unable to load menu. Please ask staff for assistance.');

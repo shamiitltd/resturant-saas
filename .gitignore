@@ -35,6 +35,7 @@ Thumbs.db
 
 # Turborepo
 .turbo/
+*.tsbuildinfo
 
 # Coverage
 coverage/

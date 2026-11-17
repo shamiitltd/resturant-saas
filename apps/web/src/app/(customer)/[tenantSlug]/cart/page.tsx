@@ -32,6 +32,7 @@ function CartCheckoutContent() {
     subtotalMinor,
     taxMinor,
     totalMinor,
+    taxRatePercent,
   } = useCustomerCart();
 
   const [customerName, setCustomerName] = useState('');
@@ -259,7 +260,7 @@ function CartCheckoutContent() {
             <span className="font-semibold text-slate-900">₹{(subtotalMinor / 100).toFixed(2)}</span>
           </div>
           <div className="flex justify-between text-slate-600">
-            <span>Taxes & GST (5%)</span>
+            <span>Taxes & GST ({taxRatePercent}%)</span>
             <span className="font-semibold text-slate-900">₹{(taxMinor / 100).toFixed(2)}</span>
           </div>
           <div className="border-t border-slate-200 pt-3 flex justify-between items-baseline">
