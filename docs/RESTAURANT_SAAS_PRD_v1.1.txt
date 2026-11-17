@@ -1,0 +1,585 @@
+RESTAURANT SAAS PRD V0.9
+========================
+
+Plain-text export of the approved working document content.
+Formatting, page layout and embedded image pixels are not represented in this TXT file.
+Embedded diagrams are indicated at their original positions with descriptive placeholders.
+
+RESTAURANT OPERATING PLATFORM
+
+Product Requirements Document
+
+Multi-tenant restaurant ordering, operations and customer engagement platform
+PRODUCT REQUIREMENTS DOCUMENT
+Version 1.1  |  17 November 2026
+Status: Draft for product, engineering and business review
+Prepared for the company project team
+This document records the current product direction and proposed implementation baseline. Open decisions are explicitly identified and must be confirmed before production commitments.
+
+DOCUMENT CONTROL
+----------------
+
+[TABLE 2]
+| Field | Value |
+| --- | --- |
+| Document | Restaurant SaaS Platform - Product Requirements Document |
+| Version / status | 1.0 - Draft for review |
+| Date | 14 November 2026 |
+| Audience | Product owners, business stakeholders, engineering, QA, operations and implementation partners |
+| Scope | Defines product vision, actors, business workflows, functional scope, release priorities, acceptance criteria and success measures. It does not lock the final backend framework. |
+| Decision status | Technology and selected workflow details remain provisional where identified in the open-decision register. |
+
+Revision history
+~~~~~~~~~~~~~~~~
+
+[TABLE 3]
+| Version | Date | Change |
+| --- | --- | --- |
+| 0.9 | 12 Nov 2026 | Initial working specification based on the agreed product vision and architecture discussion. |
+| 1.0 | 14 Nov 2026 | Added centralized third-party food-delivery aggregator order management for supported platforms such as Zomato and Swiggy. |
+
+CONTENTS
+--------
+
+- 1. Executive summary and product vision
+- 2. Problem statement and objectives
+- 3. Product scope and release strategy
+- 4. Users, roles and permissions
+- 5. Core customer and staff journeys
+- 6. Functional requirements
+- 7. Business rules and operational policies
+- 8. Non-functional requirements
+- 9. Success metrics and analytics
+- 10. Dependencies, risks and assumptions
+- 11. Open decisions and approval checklist
+- 12. Glossary
+
+1. EXECUTIVE SUMMARY AND PRODUCT VISION
+---------------------------------------
+
+The Restaurant SaaS Platform is a multi-tenant operating platform for restaurants and cafes. It gives diners a QR-based digital menu and ordering experience, gives restaurant teams coordinated kitchen/reception/waiter workflows, and gives owners a central place to manage menus, tables, offers, staff access and customer engagement. A platform-level Super Admin console enables the company to onboard and support multiple restaurant businesses from one shared SaaS platform.
+
+[TABLE 4]
+| Product vision / Make restaurant ordering and day-to-day service more accurate, transparent and engaging, while making onboarding and administration simple enough for restaurants with limited technical capability. |
+
+The product is not intended to replace every POS, attendance, payroll or inventory application at launch. It will provide a reliable core ordering and service workflow first, then connect to third-party operational systems through a controlled integration layer.
+
+[TABLE 5]
+| Product principle | Meaning |
+| --- | --- |
+| Simple for diners | Scan a table QR and order in the browser; account creation is optional. |
+| Operational clarity | One persisted order record is the source of truth for kitchen, reception, waiter and customer views. |
+| Tenant isolation | Every restaurant business has isolated data, settings, users and feature entitlements. |
+| Configurable, not code-editable | Owners can change approved content blocks and offers without writing code. |
+| Modular expansion | Games, CRM, integrations and inventory are optional capabilities and must not destabilize core ordering. |
+
+2. PROBLEM STATEMENT AND OBJECTIVES
+-----------------------------------
+
+2.1 Problems addressed
+~~~~~~~~~~~~~~~~~~~~~~
+- Verbal order-taking can create misunderstandings about items, quantities, modifiers and special instructions.
+- Customers often have limited visibility into whether an order was accepted, how long it may take, or whether it is ready.
+- Kitchen, reception and waiter teams may rely on disconnected communication channels or handwritten tickets.
+- Owners may need to visit tables or ask staff to communicate offers manually.
+- Restaurant onboarding onto a digital system can be difficult if every venue requires custom development or a separate deployment.
+- Existing attendance, POS and inventory systems vary, so forcing every restaurant to replace its current tools would create adoption friction.
+- Waiting time can be used for optional customer engagement through single-player or group games and restaurant-funded rewards.
+
+2.2 Business objectives
+~~~~~~~~~~~~~~~~~~~~~~~
+- Reduce order-entry ambiguity by making the customer-selected cart the structured order source.
+- Reduce time spent relaying orders between reception and kitchen.
+- Give diners clear order status and chef-confirmed estimated preparation time.
+- Make offers and approved front-end content changes self-service for owners.
+- Provide a repeatable tenant onboarding process with standard configuration and optional custom domains.
+- Create a modular commercial model where engagement features such as games can be packaged separately.
+- Allow future integration of attendance, payroll, POS and inventory data without coupling the core product to one provider.
+
+2.3 Product success definition
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The first production release is successful when a restaurant can be onboarded, configure its menu and tables, receive a QR order, process it through kitchen and service, create a bill, record its own payment, and update offers without requiring code changes or platform engineering intervention.
+
+3. PRODUCT SCOPE AND RELEASE STRATEGY
+-------------------------------------
+
+3.1 In-scope capabilities
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 6]
+| Capability area | Product scope |
+| --- | --- |
+| Customer experience | QR scan, digital menu, item options, cart, order confirmation, status and ETA. |
+| Restaurant operations | Kitchen order display, reception order queue, waiter pickup and service status. |
+| Restaurant billing | Server-calculated bill, taxes/discounts according to configured rules, QR payment instructions and staff payment verification. |
+| Owner controls | Menu, tables, QR codes, offers, branch settings, team access and permitted content blocks. |
+| Platform administration | Tenant onboarding, owner invitation, domain mapping, plan assignment, feature access, suspension and audit. |
+| Engagement | Optional games, multiplayer sessions, leaderboard and restaurant-funded rewards. |
+| Operational extensions | CRM, attendance/POS integrations, inventory and payroll-related data preparation in later releases. |
+| Online delivery channels | Receive and process supported third-party marketplace orders (for example Zomato and Swiggy) through a unified restaurant operations dashboard, subject to provider approval and connector availability. |
+
+3.2 Out of scope for the initial core release
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- Replacing a restaurant’s existing UPI, banking, POS, attendance or payroll provider.
+- Processing diners’ food-order payments through the SaaS company’s payment gateway.
+- Building a general-purpose website builder that allows arbitrary HTML, CSS or JavaScript execution.
+- Automated payroll compliance or tax/legal calculations without confirmed jurisdiction, policy and provider requirements.
+- Complex real-time action games, voice chat or open customer-to-customer messaging.
+- Automatic attendance integration with every vendor; only providers with documented APIs, webhooks or export formats can be integrated.
+- Guaranteed direct integration with every food-delivery marketplace before the platform has obtained the required commercial approval, technical access and provider certification.
+- Web scraping, browser automation or unofficial credential sharing as a substitute for an approved food-delivery integration.
+
+3.3 Release phases
+~~~~~~~~~~~~~~~~~~
+
+[TABLE 7]
+| Release | Included scope | Exit condition |
+| --- | --- | --- |
+| Phase 0 - Foundation | Tenant model, locations, identity, RBAC, RLS, onboarding, domain/subdomain resolution, audit baseline. | A test restaurant and its owner can be created and isolated from another tenant. |
+| Phase 1 - Core operations | Customer QR menu/order, kitchen, reception, waiter, ETA, bill generation, restaurant UPI QR and manual payment verification, menu/table/offer management. | A complete dine-in order can be processed end-to-end in a pilot restaurant. |
+| Phase 1.5 - Engagement pilot | One or more simple single-player games, configurable rewards and redemption safeguards. | A restaurant can enable the module, issue eligible rewards and verify redemption. |
+| Phase 2 - SaaS expansion | Multiplayer games, advanced visual content editor, customer CRM, custom domains, subscriptions/entitlements, multi-branch analytics, and a pilot external food-delivery order connector for an approved provider or authorized aggregation partner. | A pilot restaurant can receive and process supported marketplace orders from the unified dashboard, with provider status synchronization verified. |
+| Phase 3 - Operations ecosystem | Additional food-delivery marketplace connectors, broader menu/availability synchronization, attendance connectors, normalized attendance, payroll inputs/calculation rules, inventory and POS integrations. | Additional approved provider connectors are operational, monitored and auditable. |
+
+4. USERS, ROLES AND PERMISSIONS
+-------------------------------
+
+4.1 User groups
+~~~~~~~~~~~~~~~
+
+[TABLE 8]
+| User group | Primary needs | Typical access |
+| --- | --- | --- |
+| Customer / diner | Browse menu, place order, see ETA/status, pay restaurant directly, play games and redeem eligible rewards. | Guest access bound to a table/session; optional customer account. |
+| Reception / cashier | Monitor new orders, coordinate billing, record and verify payment, manage table service exceptions. | Assigned branch operational permissions. |
+| Chef / kitchen staff | View kitchen tickets, accept work, update preparation state and set ETA. | Assigned branch kitchen permissions. |
+| Waiter | See ready orders, identify table, collect and serve items, update service status. | Assigned branch service permissions. |
+| Manager | Supervise shift operations, staff and branch-level reports. | Configured manager role, one or more assigned branches. |
+| Owner | Configure restaurant, branches, menu, offers, staff, subscriptions and integrations. | Tenant-level administrative access, subject to platform rules. |
+| Super Admin | Onboard and support tenant businesses, manage platform plans and global settings. | Platform-level access, strongly authenticated and audited. |
+
+4.2 Permission model
+~~~~~~~~~~~~~~~~~~~~
+The product shall use role-based access control (RBAC) with permission keys and branch scope. Default roles are provided, but tenant owners may create or customize roles within limits set by the platform. A user may hold different roles at different branches. Platform Super Admin permissions are separate from tenant staff roles.
+
+[TABLE 9]
+| Role example | Allowed actions | Explicitly excluded by default |
+| --- | --- | --- |
+| Receptionist | View orders; create/close restaurant bill; record payment; verify payment; view tables. | Edit menu prices; change staff permissions; access other tenants. |
+| Chef | View kitchen tickets; accept ticket; set ETA; update preparing/ready status. | View payroll; refund or alter payment records; change menu prices. |
+| Waiter | View assigned ready orders; mark picked up/served; view table identifiers. | Change food prices; view tenant billing or subscription settings. |
+| Branch manager | Manage assigned branch operations and allowed staff tasks. | Manage unassigned branches unless separately granted. |
+| Owner | Manage tenant settings, locations, menus, offers, staff roles and plan-visible features. | Access unrelated tenants or platform secrets. |
+| Super Admin | Create/suspend tenants; assign plans; manage domains and platform settings; audited support access. | Unlogged impersonation or routine unrestricted access to customer data. |
+
+5. CORE CUSTOMER AND STAFF JOURNEYS
+-----------------------------------
+
+5.1 Customer dine-in journey
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[IMAGE OMITTED IN TEXT VERSION: Figure 1. Proposed order lifecycle from QR scan through service.]
+Figure 1. Proposed order lifecycle from QR scan through service.
+1. Customer scans the QR displayed at a table. The platform resolves restaurant, branch and table context from a secure QR token.
+1. Customer browses the menu, selects item variants/add-ons, quantity and permitted special instructions.
+1. Customer confirms the cart. The server validates menu availability, prices, offers and table context before saving the order.
+1. The order appears in the kitchen queue and reception queue. Duplicate submissions must be prevented using an idempotency key.
+1. Chef accepts the order, sets an estimated preparation time and updates preparation status.
+1. Customer sees the latest status and ETA in the browser. Realtime is an enhancement; a refresh must recover the persisted state.
+1. When the chef marks the order ready, the waiter receives a pickup task for table service, or the customer is notified for self-service.
+1. Reception generates or reviews the bill. The diner pays directly to the restaurant using its own QR/payment method. Reception verifies the payment and records it.
+
+5.2 Table session and multiple diners
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 10]
+| Recommended V1 default - requires confirmation / Use a table session to group dining activity. Each confirmed customer submission remains a distinct kitchen order ticket linked to that table session. Reception can generate a consolidated table bill. Individual split bills can be added as a later capability. Do not make one diner’s draft cart editable by every other diner by default. |
+
+5.3 Staff operational journey
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- Reception sees incoming orders and table context; it does not need to re-enter the customer’s selected line items.
+- Kitchen sees a kitchen ticket (KOT) with items, modifiers, quantities, notes, elapsed time and priority.
+- Chef updates order preparation state and supplies an ETA. ETA changes are recorded with actor and timestamp.
+- Waiter sees only tasks permitted for their assigned branch/section and records pickup and service completion.
+- Reception and kitchen staff use one branch-level operations interface for both in-house orders and supported online marketplace orders.
+
+5.3A Third-party food-delivery order journey
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- A customer places an order on a supported marketplace such as Zomato or Swiggy.
+- The marketplace sends the order to the platform through an approved POS integration, webhook/API connection or an authorized order-aggregation provider.
+- The order appears in a unified External Orders queue with marketplace name, external order reference, order timer, line items, modifiers, instructions, amount, delivery/pickup mode and the delivery information permitted by the provider.
+- An authorized receptionist/manager reviews and accepts or rejects the order in the platform. The decision is sent back to the originating marketplace through the connector, subject to its supported workflow and deadline.
+- Accepted orders are routed to the kitchen as external-channel KOTs. They are clearly labelled with their source and do not require a dine-in table assignment.
+- Kitchen staff update preparation status/ETA. The platform forwards supported status changes (for example ready or picked up) to the originating channel.
+- Cancellation, customer cancellation, timeout, refund and delivery-partner events are reflected from the source platform when provided. The platform does not independently promise or control marketplace delivery/refund decisions.
+- External marketplace orders remain distinguishable from dine-in orders for billing, settlement, reporting and reconciliation.
+
+5.4 Restaurant onboarding journey
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- Super Admin creates a tenant using restaurant business details; no IP address is required for normal onboarding.
+- Platform creates a default branch, tenant slug/subdomain, owner invitation and default configuration.
+- Owner completes branding, service mode, menu, tax settings, tables and staff roles.
+- Platform generates a unique QR for each table and provides a printable QR export.
+- A test order and staff notification check are completed before the tenant is activated.
+- A custom domain can be added later through DNS ownership verification and domain mapping.
+
+6. FUNCTIONAL REQUIREMENTS
+--------------------------
+
+Priority meanings: MUST = required for the first usable production release; SHOULD = important but can follow the core release; COULD = optional/later. Requirements are uniquely identified for traceability into design, implementation and test cases.
+
+6.1 Tenant, branch and onboarding management
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 11]
+| ID | Priority | Requirement | Acceptance criteria / expected result |
+| --- | --- | --- | --- |
+| FR-TEN-01 | MUST | The platform shall support multiple restaurant tenants in one shared SaaS deployment. | A tenant can be created and its records are not visible to another tenant through UI or API. |
+| FR-TEN-02 | MUST | A tenant shall support one or more branches/locations. | Each branch has its own address, timezone, service configuration, tables and operational staff assignment. |
+| FR-TEN-03 | MUST | Super Admin shall create, activate, suspend and archive tenant accounts. | Each lifecycle action is authorized, timestamped and recorded in an audit log. |
+| FR-TEN-04 | MUST | The platform shall provide guided onboarding for business details, owner invitation, default branch and initial settings. | A new tenant can complete a test order without code changes or a separate deployment. |
+| FR-TEN-05 | MUST | The platform shall assign a unique platform subdomain/slug to each tenant. | A tenant resolves to the correct brand and data context; duplicate active slugs are rejected. |
+| FR-TEN-06 | SHOULD | The platform shall support optional custom domains. | A custom domain is activated only after ownership verification and correct tenant mapping. |
+| FR-TEN-07 | MUST | Tenant setup shall not require restaurant IP address collection. | Onboarding works using business details, owner identity, branch settings and optional DNS configuration. |
+
+6.2 Customer menu, QR and ordering
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 12]
+| ID | Priority | Requirement | Acceptance criteria / expected result |
+| --- | --- | --- | --- |
+| FR-ORD-01 | MUST | Each table shall have a unique, revocable QR identifier mapped to a tenant, branch and table. | Scanning the QR opens the correct restaurant context and table; unknown/revoked tokens are rejected. |
+| FR-ORD-02 | MUST | Customers shall be able to browse a mobile-friendly menu without mandatory account creation. | A guest can view available categories and items in a supported mobile browser. |
+| FR-ORD-03 | MUST | Menu items shall support description, image, price, availability, category and configurable variants/modifiers. | Customer selection is reflected correctly in cart and final order snapshot. |
+| FR-ORD-04 | MUST | Customers shall be able to add, edit and remove cart items before submission. | Quantity and modifier validation occurs before order confirmation. |
+| FR-ORD-05 | MUST | The backend shall validate the submitted menu, item availability, price and discount. | Client-supplied price/tax totals are never trusted as authoritative. |
+| FR-ORD-06 | MUST | The platform shall create an order from a confirmed cart and prevent accidental duplicate submissions. | Repeated request with the same idempotency key returns the same order result rather than creating a duplicate. |
+| FR-ORD-07 | MUST | Each order shall be linked to its tenant and branch; dine-in orders shall also link to a table/session, while delivery marketplace orders may have no table/session. | Authorized staff can identify destination and customer can see only their own order/session view. |
+| FR-ORD-08 | MUST | Customers shall see order status and chef-provided ETA. | Status and ETA update without requiring a new order; reload returns the latest persisted state. |
+| FR-ORD-09 | SHOULD | Customers shall be able to submit optional order notes within configured limits. | Notes are sanitized, length-limited and shown to authorized kitchen staff. |
+| FR-ORD-10 | SHOULD | Customers may optionally create an account for order history and loyalty features. | Guest ordering remains available when no customer account is created. |
+
+6.3 Kitchen, reception and waiter operations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 13]
+| ID | Priority | Requirement | Acceptance criteria / expected result |
+| --- | --- | --- | --- |
+| FR-OPS-01 | MUST | The kitchen dashboard shall display newly submitted kitchen tickets in near real time. | A valid new order appears for the correct branch and kitchen station. |
+| FR-OPS-02 | MUST | Chef shall accept/reject an order and update its preparation state. | Only valid state transitions are accepted; actor and timestamp are recorded. |
+| FR-OPS-03 | MUST | Chef shall provide and update estimated preparation time. | Customer and staff views show the latest ETA and update history is auditable. |
+| FR-OPS-04 | MUST | Reception shall receive the order details for billing and coordination. | Reception sees exact saved line items, modifiers and calculated totals; it does not re-key the order. |
+| FR-OPS-05 | MUST | Waiter shall see ready orders assigned to their branch/section and mark pickup/served. | Only authorized waiter actions are allowed and service timestamps are saved. |
+| FR-OPS-06 | MUST | Each restaurant shall configure table-service or self-service behavior. | READY event routes to waiter workflow or customer pickup notification based on branch setting. |
+| FR-OPS-07 | MUST | Realtime disconnection shall not lose orders or state changes. | Reconnect or refresh loads current persisted state and unseen order queue. |
+| FR-OPS-08 | SHOULD | KOT shall support kitchen stations or preparation groups. | Items route to configured station where the tenant has enabled station routing. |
+
+6.4 External food-delivery channel order management
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE - External order requirements]
+| ID | Priority | Requirement | Acceptance criteria / expected result |
+| --- | --- | --- | --- |
+| FR-EXT-01 | SHOULD | The platform shall provide a unified External Orders queue for orders received from each configured and supported food-delivery marketplace/aggregation provider. | A new external order appears against the correct tenant and branch with its source platform and external reference. |
+| FR-EXT-02 | SHOULD | Authorized staff shall be able to accept or reject an external order from the platform. | The action is validated against the provider's rules and deadline, recorded with actor/time, and acknowledged by the connector; failures are visible and retryable. |
+| FR-EXT-03 | SHOULD | The platform shall display the external order's items, quantities, modifiers, special instructions, charges, discounts and permitted delivery/pickup details. | The normalized order preserves the source payload reference and accurately displays the information supplied by the provider. |
+| FR-EXT-04 | SHOULD | Accepted external orders shall be routed to the appropriate kitchen queue and printed/displayed as an external-channel KOT. | Kitchen staff can identify the marketplace/source and distinguish the ticket from dine-in orders. |
+| FR-EXT-05 | SHOULD | The platform shall send supported preparation/status updates back to the originating marketplace/aggregation provider. | Status mapping is provider-specific, acknowledged, retried safely and visible to staff when synchronization fails. |
+| FR-EXT-06 | SHOULD | The platform shall process provider cancellations, timeout/rejection events and delivery-partner status events when available. | External status changes update the internal record without creating duplicate tickets or invalid state transitions. |
+| FR-EXT-07 | SHOULD | Owners shall be able to connect and map a supported marketplace outlet to the correct tenant branch. | Connection state, provider outlet identifier, mapping status and last successful event are visible to authorized owners/admins. |
+| FR-EXT-08 | COULD | The platform may synchronize menu items, modifiers, prices and item availability with supported marketplaces. | Menu mapping is explicit; rejected or failed updates are surfaced and do not silently overwrite the restaurant's master menu. |
+| FR-EXT-09 | SHOULD | The platform shall support provider-specific order deadlines and alert staff about unacknowledged orders. | A visible countdown/alert is shown; the platform does not silently auto-accept or auto-reject unless an owner explicitly enables a supported policy. |
+| FR-EXT-10 | SHOULD | External orders shall be reportable by source, branch, status and date range, with marketplace settlement kept distinct from dine-in bill payments. | Reports reconcile to stored external order totals and clearly label any provider-supplied fees/discounts/settlement values. |
+
+External-channel integration is dependent on official provider approval, technical credentials, outlet mapping, feature certification and/or an authorized intermediary. Marketplace access and feature availability must be validated before a connector is committed to a release.
+
+6.5 Restaurant billing and customer payment recording
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 14]
+| Critical payment boundary / Diner payments for food are made directly to the restaurant using the restaurant’s own UPI QR or other restaurant-configured payment method. The SaaS company payment gateway is not used for food-order settlement. |
+
+[TABLE 15]
+| ID | Priority | Requirement | Acceptance criteria / expected result |
+| --- | --- | --- | --- |
+| FR-PAY-01 | MUST | The platform shall generate a restaurant bill from persisted order items and server-side pricing rules. | Bill totals are reproducible from item snapshots, tax and discount calculations. |
+| FR-PAY-02 | MUST | The restaurant shall be able to configure its own UPI QR/payment instructions per branch. | Customer sees the correct branch payment details; inactive settings are not presented. |
+| FR-PAY-03 | MUST | The system shall record restaurant payment method and status separately from order status. | An order can be READY while its bill remains unpaid; each status is independently visible. |
+| FR-PAY-04 | MUST | Reception shall manually verify payment made to the restaurant and mark the bill as paid. | Only an authorized staff member can verify; verifier and timestamp are stored. |
+| FR-PAY-05 | SHOULD | Customer may enter a UPI transaction reference for staff assistance. | Entered reference is treated as unverified information and never automatically proves payment. |
+| FR-PAY-06 | MUST | The platform shall not route restaurant food payments through the company’s SaaS subscription gateway. | Automated tests and provider configuration demonstrate separate payment domains. |
+| FR-PAY-07 | MUST | The platform shall maintain separate records for restaurant bill payments and SaaS subscription payments. | No payment record can be confused or reused across the two payment flows. |
+
+6.6 Owner menu, offers and content configuration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 16]
+| ID | Priority | Requirement | Acceptance criteria / expected result |
+| --- | --- | --- | --- |
+| FR-OWN-01 | MUST | Owner shall create, edit, deactivate and reorder menu categories/items. | Changes appear in the customer menu after publish and respect branch availability. |
+| FR-OWN-02 | MUST | Owner shall manage tables and generate/rotate QR codes. | Each QR maps to exactly one active table at a branch. |
+| FR-OWN-03 | MUST | Owner shall create, edit, schedule, activate and deactivate offers. | Only active and eligible offers are visible and applied; invalid combinations are rejected server-side. |
+| FR-OWN-04 | MUST | Offers shall support validity dates, branch applicability and basic eligibility/usage limits. | Offer evaluation returns a deterministic result and redemption is recorded. |
+| FR-OWN-05 | SHOULD | Owner shall configure predefined front-end content blocks without code. | Owner can edit supported text/images/links, preview and publish; arbitrary scripts are not accepted. |
+| FR-OWN-06 | SHOULD | The platform shall keep published content versions and an audit trail. | A previous version can be inspected and a permitted rollback can be performed. |
+| FR-OWN-07 | MUST | Owner shall view a summary dashboard for orders and operational activity. | Dashboard totals are tenant/branch scoped and clearly identify date range and timezone. |
+
+6.7 Games and rewards
+~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 17]
+| ID | Priority | Requirement | Acceptance criteria / expected result |
+| --- | --- | --- | --- |
+| FR-GAME-01 | SHOULD | The platform shall allow games to be enabled/disabled by tenant entitlement and owner setting. | A tenant without the feature entitlement cannot start or expose game sessions. |
+| FR-GAME-02 | SHOULD | The platform shall support single-player games during order waiting time. | A customer can start, complete and receive a server-validated result. |
+| FR-GAME-03 | COULD | The platform shall support table-level or restaurant-wide multiplayer rooms. | Authorized players can join an active room and receive only that room’s events. |
+| FR-GAME-04 | SHOULD | Owner shall configure reward rules, quantity, validity and redemption limits. | A reward cannot exceed defined limits or be redeemed outside eligibility. |
+| FR-GAME-05 | MUST | Reward issuance and redemption shall be validated by the backend. | Duplicate completion/redeem requests do not create duplicate rewards or redemptions. |
+| FR-GAME-06 | SHOULD | The platform shall expose a leaderboard using approved display names or pseudonyms. | Customer personal details are not exposed by default. |
+
+6.8 Staff, CRM and integrations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 18]
+| ID | Priority | Requirement | Acceptance criteria / expected result |
+| --- | --- | --- | --- |
+| FR-STA-01 | MUST | Owner/authorized manager shall invite and deactivate staff users. | Invitation and deactivation events are logged and access is removed promptly. |
+| FR-STA-02 | MUST | Owner shall assign default or custom roles and branch scope. | A staff user cannot access actions or branches outside their permissions. |
+| FR-STA-03 | SHOULD | The platform shall support customer profiles and order history for opted-in/identified customers. | Guest customers are not forced into a profile; access is restricted and consent/retention rules are applied. |
+| FR-INT-01 | SHOULD | The platform shall provide an integration hub for approved attendance/POS/inventory providers. | Each connector has status, last sync, errors and credential lifecycle. |
+| FR-INT-02 | SHOULD | The platform shall support API, webhook, scheduled sync and CSV import patterns as appropriate. | Imported data is validated, mapped and traceable to source records. |
+| FR-INT-03 | SHOULD | The platform shall map external employee identifiers to internal staff records. | Unmatched or duplicate mappings are flagged for review. |
+| FR-INT-04 | COULD | The platform may calculate payroll inputs using imported attendance and configured salary rules. | Payroll outputs are reviewable and require an approved policy model before production use. |
+| FR-INT-05 | COULD | The platform shall support branch-wise inventory and stock movement management. | Stock movement history, permissions and low-stock alerts are auditable. |
+
+6.9 Super Admin and SaaS subscriptions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 19]
+| ID | Priority | Requirement | Acceptance criteria / expected result |
+| --- | --- | --- | --- |
+| FR-SA-01 | MUST | Super Admin shall manage tenant status, onboarding and platform configuration. | Privileged operations require platform-level authorization and audit logging. |
+| FR-SA-02 | MUST | Super Admin shall manage plans and feature entitlements. | Feature access is calculated server-side for the tenant and can be changed without code deployment. |
+| FR-SA-03 | SHOULD | Restaurant owner shall select and pay for a SaaS plan through the company’s payment gateway. | A successful verified gateway event activates or renews the subscription. |
+| FR-SA-04 | SHOULD | The platform shall handle subscription expiry, renewal failure, grace period and cancellation. | Feature entitlement changes follow explicit plan policy and are auditable. |
+| FR-SA-05 | MUST | Company gateway webhook handling shall be idempotent and signature-verified. | Invalid or duplicate webhook events cannot activate or double-charge a subscription. |
+| FR-SA-06 | MUST | The platform shall expose usage and tenant health information to Super Admin. | Usage is tenant-scoped and based on defined event/metric sources. |
+
+7. BUSINESS RULES AND OPERATIONAL POLICIES
+------------------------------------------
+
+[TABLE 20]
+| Rule ID | Business rule |
+| --- | --- |
+| BR-01 | Tenant means the restaurant business or chain. A location/branch is an operating outlet within that tenant. |
+| BR-02 | Every tenant-owned record must be associated with a tenant. Branch-operational records must also identify their location. |
+| BR-03 | A table QR identifies tenant, branch and table context; it does not grant staff privileges. |
+| BR-04 | Customer order prices, tax, discounts and totals are calculated or validated server-side. Persist a price/tax/discount snapshot at order time. |
+| BR-05 | Order status and payment status are separate state machines. |
+| BR-06 | Order states: PLACED, ACCEPTED, PREPARING, READY, SERVED, COMPLETED; terminal/exception states include REJECTED and CANCELLED. Allowed transitions are enforced by the backend. |
+| BR-07 | Restaurant bill payment states: UNPAID, PAYMENT_REPORTED (optional), VERIFIED_PAID, PARTIALLY_PAID (future), REFUNDED/VOIDED where applicable. |
+| BR-08 | Static UPI QR payment is not automatically confirmed by the platform. A staff member verifies receipt using the restaurant’s bank/UPI channel. |
+| BR-09 | The company’s payment gateway processes SaaS subscription charges only; restaurant food payments are outside that gateway flow. |
+| BR-10 | A table session may contain multiple submitted order tickets. Consolidated bill is the recommended initial behavior; split billing remains a separate decision/feature. |
+| BR-11 | Offers, discounts and rewards are revalidated at the backend at the time of application/redemption. |
+| BR-12 | Subscription entitlements are evaluated on the server and must not rely on frontend visibility alone. |
+| BR-13 | Owner content editing is schema-driven and limited to approved blocks; no arbitrary code execution is allowed. |
+| BR-14 | External integrations must preserve source references, sync timestamps and error logs. Unsupported systems use documented CSV/manual fallback. |
+| BR-15 | All operational timestamps are stored in UTC and displayed in the branch’s configured timezone. |
+
+8. NON-FUNCTIONAL REQUIREMENTS
+------------------------------
+
+The following are proposed initial targets for design and load testing, not contractual guarantees. Final SLOs must be confirmed against hosting plan, expected tenant count, cost and support model.
+
+[TABLE 21]
+| Area | Proposed requirement / target |
+| --- | --- |
+| Availability | Initial production target: 99.5% monthly availability for core ordering APIs, excluding approved maintenance and third-party outages. |
+| API latency | Target p95 under 500 ms for ordinary read APIs and under 800 ms for ordinary write APIs under agreed load; excludes external provider latency and large exports. |
+| Realtime delivery | Target p95 under 2 seconds for in-app order events under agreed load; persisted state remains correct even if realtime delivery is delayed. |
+| Durability | Order, order-item, status and bill records must be committed transactionally. No order should depend on a browser-only or websocket-only state. |
+| Tenant isolation | Cross-tenant read/write access must be denied at API and database policy layers; automated negative tests are mandatory. |
+| Scalability | Initial load-test profile to be agreed; suggested test scenario: 100 tenants and 1,000 concurrent customer/staff sessions, then increase based on observed bottlenecks. |
+| Usability | Customer flow must be mobile-first. Staff dashboards must work on common tablets and desktop screens. |
+| Accessibility | Target WCAG 2.1 AA for core flows where practicable; keyboard operation and semantic controls required. |
+| Security | TLS in transit; secrets server-side; least privilege; audit of privileged actions; rate limits and input validation. |
+| Recovery | Proposed initial recovery objectives: RPO <= 24 hours and RTO <= 4 hours, subject to selected Supabase plan, backup design and tested restoration process. |
+| Compatibility | Support current evergreen Chrome, Edge, Safari and Firefox versions; exact browser/device matrix to be finalized for QA. |
+| Localization | Initial currency, language and tax configuration must be tenant/branch configurable; default market assumptions require business confirmation. |
+
+9. SUCCESS METRICS AND ANALYTICS
+--------------------------------
+
+[TABLE 22]
+| Metric | Definition / measurement | Why it matters |
+| --- | --- | --- |
+| QR-to-order conversion | Confirmed orders / valid menu sessions | Indicates customer flow usability. |
+| Order error rate | Orders with correction/cancellation due to item/quantity/modifier mismatch / total orders | Measures reduction in miscommunication. |
+| Order acknowledgement time | Time from order placed to kitchen accepted | Measures kitchen responsiveness. |
+| ETA accuracy | Difference between chef ETA and ready timestamp | Measures usefulness of waiting-time information. |
+| Ready-to-served time | Time between READY and SERVED | Measures waiter handoff efficiency. |
+| Payment verification time | Time from bill generated/payment reported to staff verification | Identifies billing bottlenecks. |
+| Offer engagement | Offer views, eligible applications and redemptions | Measures owner promotion effectiveness. |
+| Game engagement | Game starts, completions, repeat sessions and reward redemption | Evaluates optional engagement module. |
+| Onboarding completion | Time and step completion from tenant creation to test order | Measures SaaS onboarding simplicity. |
+| Tenant activation / retention | Activated tenants and retained paying tenants by cohort | Measures SaaS business health. |
+| Integration health | Successful syncs, failures, lag and unresolved mappings | Measures operational integration reliability. |
+
+[TABLE 23]
+| Measurement note / Analytics events must be tenant-scoped, avoid storing unnecessary personal data and distinguish operational events from marketing/engagement tracking. Define consent and retention policies before enabling customer-level profiling. |
+
+10. DEPENDENCIES, RISKS AND ASSUMPTIONS
+---------------------------------------
+
+10.1 Dependencies
+~~~~~~~~~~~~~~~~~
+- Restaurant-provided menu, pricing, tax settings, branch details, table layout, logo and UPI QR/payment details.
+- Company subscription payment gateway account, merchant onboarding and verified webhook configuration.
+- Supabase project, hosting, domain/DNS and secrets-management environments.
+- Documented APIs, webhooks or export samples for each attendance/POS/inventory provider selected for integration.
+- Commercial and technical approval, credentials, sandbox/test access, outlet mapping and certification requirements for each food-delivery marketplace or authorized aggregator connector.
+- Restaurant staff training and operating policy for order acceptance, payment verification, cancellation and refunds.
+
+10.2 Risks and mitigations
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 24]
+| Risk | Impact | Mitigation |
+| --- | --- | --- |
+| Static UPI QR does not prove payment | Unpaid order could be marked paid incorrectly. | Manual verification by authorized staff; payment status separate; audit verifier and timestamp. |
+| Tenant data leakage | Critical security and trust issue. | Tenant context enforcement, RLS, least privilege, cross-tenant automated tests and audit. |
+| Realtime outage/disconnect | Staff or customer may not see an update immediately. | Persist events/state; reconnect fetch; retry/outbox; visible stale/offline state. |
+| Third-party integration variability | Connector development may be delayed or provider API may change. | Adapter pattern, connector certification, versioned mappings and CSV fallback. |
+| Marketplace integration approval/eligibility | Direct POS access may have minimum-volume, uptime, support, legal or certification prerequisites; a new SaaS may not qualify immediately. | Validate requirements early; evaluate authorized aggregation middleware; do not promise a marketplace until access and outlet mapping are confirmed. |
+| External order acknowledgement timeout | Marketplace may automatically reject or cancel an order if the restaurant does not respond within its deadline. | Prominent timers, sound/visual alerts, retry/reconciliation logic and clear connection-health status. |
+| External menu mapping mismatch | Incorrect item/modifier/price mapping may cause failed or incorrect orders. | Explicit mapping review, validation, versioning and controlled menu publishing; keep provider menu sync optional until approved. |
+| Feature creep | Core ordering delivery becomes delayed. | Phase gates; keep games, inventory and payroll modular. |
+| Rewards abuse | Financial/discount leakage and customer disputes. | Server-side eligibility, quotas, cooldowns, one-time redemption and audit trail. |
+| Custom domain complexity | Misrouting or certificate failures. | DNS ownership verification, mapping lifecycle, SSL automation and fallback subdomain. |
+
+10.3 Assumptions
+~~~~~~~~~~~~~~~~
+- The platform is initially designed for dine-in restaurants and cafes in a single initial market; jurisdiction-specific tax, privacy and invoicing details remain to be confirmed. It may also receive external marketplace orders where an approved connector is available.
+- Each tenant can operate one or more branches.
+- Customer ordering is browser-based and does not require installation or mandatory login.
+- Restaurant customer payment is directed to the restaurant using its own UPI QR/payment instructions; staff manually verifies receipt in the initial release.
+- The SaaS company controls the subscription gateway account and receives subscription payments.
+- Plans and prices are not finalized; feature-entitlement infrastructure will be built so packaging can change without schema redesign.
+- Backend framework is not yet approved; the TRD provides a framework-neutral design with NestJS and FastAPI implementation profiles.
+
+11. OPEN DECISIONS AND APPROVAL CHECKLIST (UPDATED BY ADDENDUM 1.1)
+-----------------------------------------
+
+The following items must be confirmed by product/business and engineering owners. This document deliberately records recommendations rather than silently assuming approval.
+
+[TABLE 25]
+| Decision ID | Open decision | Recommended default | Owner / status |
+| --- | --- | --- | --- |
+| D-01 | Backend framework | Choose NestJS or FastAPI after a small proof of concept and team-skill review. | Engineering lead - OPEN |
+| D-02 | Frontend application topology | One Next.js app with role-specific route groups; shared packages for reuse. | Engineering lead - PROPOSED |
+| D-03 | Table session behavior | One table session groups multiple submitted tickets; each submission remains a separate order; consolidated bill initially. | Product owner - PROPOSED |
+| D-04 | Payment proof workflow | Static restaurant UPI QR with manual receptionist verification in V1. | Business/operations - PROPOSED |
+| D-05 | Tax/invoice rules | Restaurant/branch-configurable rules confirmed by finance/tax advisor for launch market. | Business/finance - OPEN |
+| D-06 | SaaS gateway provider | Company-owned gateway provider and subscription billing/cancellation policy. | Company finance - OPEN |
+| D-07 | Initial subscription packaging | Core ordering vs paid engagement add-on; finalize prices and limits separately. | Business - OPEN |
+| D-08 | Custom domain timing | Platform subdomain for MVP; custom domain in Phase 2. | Product/engineering - PROPOSED |
+| D-09 | First external integration | Select one attendance/POS provider based on actual restaurant demand and API access. | Product/operations - OPEN |
+| D-10 | Initial scale / SLA | Approve load profile, SLO, backup, RPO and RTO against budget. | Engineering/operations - OPEN |
+| D-11 | Cancellation/refund authority | Define who may cancel an order, void a bill, record a refund or reopen a table session. | Operations/finance - OPEN |
+| D-12 | Customer data retention | Define guest session, order history, marketing consent and deletion/retention rules, including marketplace-supplied customer/delivery data. | Legal/product - OPEN |
+| D-13 | Food-delivery integration route | Obtain direct marketplace POS approval versus using an authorized order-aggregation middleware; validate cost, eligibility, supported features and service levels. | Product/business/engineering - OPEN |
+| D-14 | First marketplace and pilot outlet | Select the first provider (Zomato, Swiggy or another supported channel), pilot restaurant/branch and acceptance/status scope. | Product/operations - OPEN |
+| D-15 | External order financial treatment | Confirm how marketplace-collected payments, COD, commissions, discounts, refunds, packaging fees and settlement reports are represented in restaurant reporting. | Finance/operations - OPEN |
+
+12. GLOSSARY
+------------
+
+[TABLE 26]
+| Term | Meaning |
+| --- | --- |
+| Tenant | A restaurant business or restaurant chain using the SaaS platform. |
+| Location / branch | A specific operating outlet belonging to a tenant. |
+| Table session | A visit/session associated with a physical restaurant table; may group multiple submitted orders. |
+| QR token | A non-sequential identifier encoded in a table QR and resolved by the platform. |
+| KOT | Kitchen Order Ticket: the kitchen-facing representation of order items and preparation instructions. |
+| RBAC | Role-Based Access Control: permissions granted through assigned roles. |
+| RLS | Row-Level Security: database policies that restrict which rows a database user/session can access. |
+| Feature entitlement | A server-evaluated permission to use a product capability based on plan and tenant configuration. |
+| Outbox | A durable database record of an event to be published or processed asynchronously. |
+| SaaS subscription payment | Payment from a restaurant business to the platform company for the SaaS plan. |
+| Restaurant bill payment | Payment from a diner to the restaurant for food/service; separate from the SaaS subscription. |
+
+DOCUMENT METADATA
+-----------------
+Author metadata: Product and Engineering Team
+Subject: Product and technical specification for a multi-tenant restaurant SaaS platform
+
+HEADER / FOOTER TEXT
+--------------------
+RESTAURANT SAAS PRD  |  WORKING DRAFT
+CONFIDENTIAL - COMPANY PROJECT  |  Page  of
+
+
+ADDENDUM — PRODUCT OWNER APPROVALS AND UI DESIGN HANDOFF
+=======================================================
+Document version: 1.1 | Date: 17 November 2026
+This addendum records later explicit Product Owner approvals. If an earlier
+paragraph/table conflicts with this addendum, this addendum takes precedence.
+No other OPEN or PROPOSED decision is changed by this addendum.
+
+A. APPROVED ARCHITECTURE-RELATED PRODUCT DECISIONS
+-------------------------------------------------
+- ADR-01 / D-01 Backend framework: APPROVED — NestJS with TypeScript, using a
+  modular-monolith backend.
+- ADR-02 / D-02 Frontend topology: APPROVED — one Next.js application with
+  role-specific route groups for customer, staff, restaurant owner and
+  platform Super Admin experiences.
+- ADR-08 / table session and billing: APPROVED — one active table session may
+  group multiple separately submitted customer orders/KOTs. Consolidated
+  table billing is the default. The data model should preserve a path to
+  future split-bill support without major redesign. Split billing is not part
+  of the currently authorized implementation scope.
+
+B. UI/UX DESIGN-FIRST DELIVERY REQUIREMENT
+-----------------------------------------
+The approved UI reference set is the design source for frontend implementation.
+The design set currently contains 113 numbered screen references. The UI
+reference images must be preserved as existing assets; documentation updates
+are not permission to delete, rename, regenerate or replace the ui-design
+folder or its images.
+
+Before implementing a screen, the coding agent must locate its corresponding
+reference image and implement the layout, hierarchy, component states and
+responsive behavior from that reference. Do not invent a materially different
+visual design. Where a reference is ambiguous or incomplete, report the gap
+and ask for clarification rather than silently inventing business behavior.
+
+The screen inventory and design-system documentation are companion artifacts
+that map references to roles, routes, workflows, requirements and status.
+They do not create new product scope by themselves.
+
+C. SCOPE BOUNDARIES
+-------------------
+- ORM / database access strategy remains OPEN (ADR-03).
+- Background queue / Redis strategy remains OPEN (ADR-06).
+- Tax/invoicing, SaaS gateway, subscription packaging, hosting, capacity/SLA,
+  cancellation/refund authority, retention/privacy and marketplace decisions
+  remain OPEN unless separately approved.
+- Marketplace integration requires authorized provider access and verified
+  documentation; no scraping, unofficial credential sharing or fabricated
+  provider behavior.
+- Frontend route visibility is not authorization. Backend and database
+  authorization and tenant/location isolation remain mandatory.
+
+D. IMPLEMENTATION ORDER
+-----------------------
+1. Preserve and organize the approved UI references; create the design system,
+   screen inventory and requirement mapping.
+2. Implement the approved frontend shell and shared visual components from
+   those references.
+3. Implement backend and database vertical slices in dependency order, with
+   the approved NestJS and Next.js architecture.
+4. Do not proceed into unapproved features or resolve remaining OPEN decisions
+   by assumption.
+
+END OF PRD ADDENDUM 1.1

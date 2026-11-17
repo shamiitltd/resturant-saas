@@ -1,0 +1,1857 @@
+RESTAURANT SAAS PLATFORM
+COMPLETE END-TO-END SYSTEM WORKFLOW
+BASED STRICTLY ON THE ANTIGRAVITY PRD AND TRD
+
+Document ID : RS-WF-AGY-001
+Version     : 1.2
+Date        : 14 November 2026
+Status      : Workflow companion to PRD/TRD; working specification
+Audience    : Product Owner, Business Team, Engineering, QA, Operations,
+              and Google Antigravity coding agents
+
+SOURCE DOCUMENTS
+----------------
+1. RESTAURANT_SAAS_PRD_ANTIGRAVITY.txt
+   Document ID: RS-PRD-AGY-001
+2. RESTAURANT_SAAS_TRD_ANTIGRAVITY.txt
+   Document ID: RS-TRD-AGY-001
+
+IMPORTANT SCOPE RULE
+-------------------
+This workflow document organizes and explains behavior present in the PRD
+and TRD, including the external food-delivery marketplace workflow added in
+v1.2. It does not approve provider access or resolve open architecture/product
+decisions. Where the PRD/TRD marks a decision OPEN,
+PROPOSED, SHOULD or COULD, this workflow preserves that status.
+
+SOURCE-OF-TRUTH ORDER
+--------------------
+1. Latest explicit instruction from the Product Owner.
+2. Approved Architecture Decision Records (ADRs) and approved changes.
+3. PRD for product behavior and acceptance criteria.
+4. TRD for technical architecture and implementation constraints.
+5. Existing code and tests, unless they conflict with approved requirements.
+6. Agent assumptions (must never silently override the above).
+
+If this workflow appears to conflict with the PRD or TRD, the PRD/TRD wins.
+If the PRD and TRD conflict, stop the affected implementation and request a
+resolution. Do not silently invent a rule.
+
+======================================================================
+CONTENTS
+======================================================================
+
+PART A  - SYSTEM OVERVIEW
+  1. Product purpose
+  2. Users and responsibility boundaries
+  3. Tenant, branch and table hierarchy
+  4. Overall system architecture and data flow
+  5. Core system invariants
+
+PART B  - BUSINESS WORKFLOWS
+  6. Super Admin: new restaurant onboarding
+  7. Owner: first-time branch configuration
+  8. Identity, staff access and permissions
+  9. Owner: menu, table and QR management
+ 10. Owner: offers and customer-facing content
+ 11. Customer: QR resolution and menu discovery
+ 12. Customer: cart and order submission
+ 13. Backend: atomic order creation and notifications
+ 14. Chef: kitchen order processing and ETA
+ 15. Reception: order visibility and bill preparation
+ 16. Waiter/self-service: READY handoff and serving
+ 17. Restaurant bill and direct restaurant payment
+ 18. Table-session lifecycle
+ 19. Games and rewards
+ 20. Customer CRM
+ 21. External integrations: attendance/POS/inventory
+ 22. Inventory operations
+ 23. Payroll preparation inputs
+ 24. SaaS plans, subscriptions and company payment gateway
+ 25. Tenant domain lifecycle
+ 26. Tenant suspension, activation and archive
+
+PART C  - TECHNICAL EVENT AND DATA WORKFLOWS
+ 27. Realtime event delivery and recovery
+ 28. Order and payment state machines
+ 29. Data ownership and module boundaries
+ 30. API interaction map
+ 31. Authentication, authorization and tenant isolation
+ 32. Failure and recovery workflows
+
+PART D  - DELIVERY AND VERIFICATION
+ 33. Complete end-to-end scenarios
+ 34. Implementation sequence for Antigravity
+ 35. Release gates and acceptance checklist
+ 36. Open decisions that must remain open
+ 37. Glossary
+
+======================================================================
+PART A - SYSTEM OVERVIEW
+======================================================================
+
+1. PRODUCT PURPOSE
+------------------
+The product is a shared, multi-tenant Restaurant Operating SaaS Platform.
+It serves restaurants, cafes and restaurant chains.
+
+The core customer flow is:
+  SCAN TABLE QR
+      -> OPEN RESTAURANT MENU
+      -> SELECT AND CONFIGURE ITEMS
+      -> SUBMIT ORDER
+      -> KITCHEN AND RECEPTION RECEIVE THE ORDER
+      -> CHEF ACCEPTS AND SETS ETA
+      -> CUSTOMER TRACKS STATUS
+      -> ORDER BECOMES READY
+      -> WAITER SERVES OR CUSTOMER COLLECTS
+      -> RECEPTION PREPARES/REVIEWS BILL
+      -> CUSTOMER PAYS THE RESTAURANT DIRECTLY
+      -> AUTHORIZED STAFF VERIFIES AND RECORDS PAYMENT
+
+The platform also provides owner tools, staff permissions, a Super Admin
+onboarding layer, optional games/rewards, a constrained content configurator,
+and later-phase integrations/operations modules.
+
+The platform's principal outcomes are:
+- Reduce verbal order-taking errors.
+- Provide customers with persisted order status and chef-confirmed ETA.
+- Give kitchen, reception and waiters the same order record.
+- Let owners publish offers without visiting tables.
+- Onboard multiple restaurant businesses on one shared platform.
+- Let owners safely edit supported customer-facing blocks without coding.
+- Support optional games and rewards.
+- Integrate with supported third-party tools instead of forcing replacement.
+- Monetize through SaaS subscriptions and optional feature entitlements.
+
+2. USERS AND RESPONSIBILITY BOUNDARIES
+--------------------------------------
+
+2.1 CUSTOMER / DINER
+Responsibilities:
+- Scan a table QR.
+- View the correct restaurant/branch menu.
+- Select menu items, variants/modifiers, quantities and optional notes.
+- Submit an order.
+- View persisted order status and chef ETA.
+- Pay the restaurant directly using the restaurant's configured payment
+  instructions or another payment method accepted by that restaurant.
+- Optionally use eligible games and rewards.
+
+Customer access rules:
+- Basic dine-in ordering supports guest access; mandatory account creation is
+  not required.
+- Optional customer profile may support history/loyalty where implemented.
+- Customer QR/table context is not a staff identity.
+- A customer must not see another tenant's or another customer's private
+  order/session information.
+
+2.2 RECEPTION / CASHIER
+Responsibilities:
+- View incoming persisted orders and their table/session context.
+- Review generated bills.
+- Record restaurant-side payment details.
+- Verify payment in the restaurant's own bank/UPI application or other
+  external payment channel.
+- Perform only authorized billing exceptions.
+
+Reception does not re-enter every customer-selected item into a second order.
+The bill is generated from persisted order/item snapshots and server-side
+calculation rules.
+
+2.3 CHEF / KITCHEN STAFF
+Responsibilities:
+- View KOTs for the correct branch/station.
+- Accept or reject orders according to the configured policy.
+- Update preparation status.
+- Set or update the estimated preparation time (ETA).
+- Mark the order READY when preparation is complete.
+
+2.4 WAITER / SERVICE STAFF
+Responsibilities:
+- View READY orders eligible for their branch/section assignment.
+- Pick up the prepared order.
+- Record pickup and served status.
+
+2.5 BRANCH MANAGER
+Responsibilities:
+- Supervise branch operations and permitted reports/actions.
+- Perform only actions covered by assigned permissions and location scope.
+
+2.6 OWNER
+Responsibilities:
+- Manage restaurant business profile and branches.
+- Manage menus, items, prices, availability and modifiers.
+- Manage tables and QR tokens.
+- Publish, schedule and deactivate offers.
+- Configure staff accounts, roles and permissions.
+- Configure optional games/rewards and feature settings where entitled.
+- Manage supported integrations.
+- Edit allowed customer-facing content blocks.
+- View basic operational reporting and later-phase analytics.
+
+2.7 SUPER ADMIN (PLATFORM COMPANY)
+Responsibilities:
+- Create, activate, suspend and archive tenants.
+- Invite restaurant owners.
+- Assign plans and feature entitlements.
+- Manage platform subdomains and verified custom domains as supported.
+- Monitor usage and platform health.
+- Perform authorized, audited support actions.
+
+Super Admin is a platform-level authority and is not a restaurant staff role.
+A restaurant owner cannot grant platform-admin authority.
+
+3. TENANT, BRANCH AND TABLE HIERARCHY
+-------------------------------------
+
+The platform uses this hierarchy:
+
+  PLATFORM
+    |
+    +-- TENANT A (Restaurant Business / Chain)
+    |     |
+    |     +-- LOCATION A1 (Branch)
+    |     |     +-- TABLE 01
+    |     |     |     +-- QR TOKEN
+    |     |     |     +-- TABLE SESSION
+    |     |     |           +-- ORDER 1 -> ORDER ITEMS -> KOT/STATUS EVENTS
+    |     |     |           +-- ORDER 2 -> ORDER ITEMS -> KOT/STATUS EVENTS
+    |     |     |
+    |     |     +-- TABLE 02 ...
+    |     |     +-- Branch Staff / Settings / Payment QR
+    |     |
+    |     +-- LOCATION A2 (Another Branch)
+    |     +-- Tenant Menu / Offers / Users / Entitlements / Branding
+    |
+    +-- TENANT B (Another Restaurant Business)
+          +-- Its own Locations / Tables / Orders / Staff / Settings
+
+Definitions:
+- TENANT = one restaurant business or restaurant chain using the SaaS.
+- LOCATION = one physical restaurant branch/outlet belonging to a tenant.
+- TABLE = a table belonging to one location.
+- QR TOKEN = secure, revocable token resolving one table context.
+- TABLE SESSION = dining visit context grouping one or more submitted orders.
+- ORDER = an individual customer-submitted order and its KOT/status lifecycle.
+
+Every tenant-owned row is tenant-scoped. Branch operational records are also
+location-scoped where applicable. One restaurant's data must never be
+accessible to another restaurant.
+
+4. OVERALL SYSTEM ARCHITECTURE AND DATA FLOW
+--------------------------------------------
+
+4.1 Application experiences
+
+  CUSTOMER QR / PWA
+  STAFF DASHBOARD (Reception / Chef / Waiter / Manager)
+  OWNER DASHBOARD
+  PLATFORM SUPER ADMIN DASHBOARD
+                  |
+                  v
+          NEXT.JS WEB APPLICATION
+             (PROPOSED)
+                  |
+                  v
+          BACKEND APPLICATION API
+          (NESTJS OR FASTAPI - OPEN)
+                  |
+        +---------+----------+
+        |         |          |
+        v         v          v
+   SUPABASE   SUPABASE   SUPABASE
+   POSTGRES   AUTH/RLS   STORAGE / REALTIME
+        |
+        v
+   TRANSACTIONAL OUTBOX
+        |
+        v
+   BACKGROUND WORKER + REDIS QUEUE
+        |
+        +---- Notifications
+        +---- Company gateway webhooks/reconciliation
+        +---- Attendance/POS/inventory connectors
+        +---- Scheduled offers/subscription jobs
+
+4.2 Important architecture behavior
+- PostgreSQL/Supabase is the source of truth for business state.
+- Realtime messages notify clients; they are not the authoritative record.
+- Critical writes must be transactional and idempotent.
+- Backend must validate permissions, tenant and location scope.
+- Games, CRM, integrations and inventory remain modular.
+- Start with a modular monolith, not one microservice per module.
+- A separate worker process may be deployed for background jobs.
+- Supabase Realtime Broadcast/private channels are the initial realtime
+  approach; a dedicated game gateway is conditional on future requirements.
+
+5. CORE SYSTEM INVARIANTS
+-------------------------
+
+INVARIANT 01: Shared multi-tenant platform; no per-restaurant code fork.
+INVARIANT 02: Tenant = business/chain; location = physical branch.
+INVARIANT 03: Tenant-owned data always carries tenant scope.
+INVARIANT 04: Branch operational data also carries location scope.
+INVARIANT 05: Backend/database state is authoritative, not browser state.
+INVARIANT 06: Order status and bill/payment status are independent.
+INVARIANT 07: Restaurant diner payments and company SaaS payments are separate.
+INVARIANT 08: Customer UPI QR/reference is not proof that payment was received.
+INVARIANT 09: Only authorized staff can verify restaurant payment.
+INVARIANT 10: Only verified company-gateway events may update SaaS payment state.
+INVARIANT 11: Repeated order submission must not create duplicate orders/KOTs.
+INVARIANT 12: Realtime interruption must not lose persisted work.
+INVARIANT 13: Owner content editing is limited to allowlisted blocks.
+INVARIANT 14: Feature use requires entitlement and tenant setting where applicable.
+INVARIANT 15: Never trust client-supplied tenant, location, role, price, tax,
+             reward score, payment status or subscription entitlement.
+INVARIANT 16: Restaurant IP address is not required for onboarding.
+
+======================================================================
+PART B - BUSINESS WORKFLOWS
+======================================================================
+
+6. SUPER ADMIN WORKFLOW: ONBOARD A NEW RESTAURANT
+------------------------------------------------
+ACTOR: Super Admin
+GOAL: Add a restaurant business to the shared SaaS platform and make it ready
+      for owner configuration and a test order.
+
+PRECONDITIONS:
+- Super Admin is authenticated and has platform tenant-management permission.
+- Required business and owner details are available.
+
+WORKFLOW:
+1. Super Admin opens Platform Dashboard.
+2. Super Admin selects Add Restaurant / Create Tenant.
+3. Enters restaurant business name and business/contact information.
+4. Enters owner identity/contact information needed for invitation.
+5. Enters the initial branch/location details.
+6. Platform validates required fields and checks for duplicate slug/hostname
+   according to platform rules.
+7. Platform creates the tenant record.
+8. Platform creates the first location record and default configuration.
+9. Platform assigns a unique tenant slug/platform subdomain.
+10. Platform invites the restaurant owner through the configured invitation
+    process.
+11. Owner receives the invitation and completes account setup.
+12. Owner enters/finishes branch settings, branding, menu, service mode,
+    applicable tax configuration and table setup.
+13. Platform/owner creates tables and generates a unique QR token for each
+    active table.
+14. Owner configures staff and location-scoped roles/permissions.
+15. Owner and/or Super Admin performs a test order and notification test.
+16. Super Admin activates the tenant after required setup/test completion.
+17. The restaurant starts operating through its tenant URL.
+18. If a custom domain is needed, it is handled as an optional verified
+    domain mapping; it is not required for initial onboarding.
+
+EXPECTED RESULT:
+- One tenant exists with one or more locations.
+- Owner can access the owner dashboard.
+- The tenant has a unique platform slug/subdomain.
+- Branch/menu/table configuration can be completed without custom deployment.
+- Tenant is active only after authorized activation.
+
+ERROR / EXCEPTION PATHS:
+- Duplicate slug: reject and request a different slug.
+- Invalid owner invitation target: report failure; do not create fake identity.
+- Missing mandatory business/branch data: keep onboarding incomplete.
+- Failed test order or notification: do not treat test as passed; record issue.
+- Cross-tenant access attempt: deny and log security event where applicable.
+
+IMPORTANT:
+- Do not collect restaurant IP address for normal onboarding.
+- Do not create one app deployment or database project per restaurant.
+- Do not invent legal/business fields not defined by approved launch policy.
+
+PRD TRACE: FR-TEN-01 through FR-TEN-07; FR-PLAT-01.
+TRD TRACE: Sections 1, 3, 4, 5, 17 and 18.
+
+7. OWNER WORKFLOW: FIRST-TIME BRANCH CONFIGURATION
+--------------------------------------------------
+ACTOR: Restaurant Owner
+GOAL: Configure the first branch so it can receive real dine-in orders.
+
+PRECONDITIONS:
+- Tenant has been created by Super Admin.
+- Owner invitation has been accepted and owner membership is active.
+
+WORKFLOW:
+1. Owner signs in.
+2. Backend validates authentication, tenant membership and owner permissions.
+3. Owner selects the tenant/branch context they are authorized to manage.
+4. Owner completes restaurant/branch profile and contact information.
+5. Owner configures branch timezone and operational settings.
+6. Owner selects the branch service mode:
+   a. TABLE SERVICE, or
+   b. SELF SERVICE.
+7. Owner configures the menu categories and menu items.
+8. Owner configures item descriptions, images, prices, variants/modifiers,
+   availability and supported notes.
+9. Owner publishes the menu.
+10. Owner creates branch tables.
+11. Platform generates unique QR tokens for active tables.
+12. Owner downloads/prints/displays the QR codes at the matching tables.
+13. Owner configures the branch's restaurant-owned UPI QR/payment instructions
+    or other accepted restaurant payment method.
+14. Owner adds staff and assigns roles/location scope.
+15. Owner optionally configures offers and other features available to the
+    tenant under its current entitlement.
+16. Owner verifies the customer menu and performs a test order.
+
+EXPECTED RESULT:
+- Branch is configured with menu, tables, QR codes, service mode and payment
+  instructions.
+- Correct staff can access the branch dashboards.
+- A test order can be processed end-to-end.
+
+PRD TRACE: FR-TEN-02, FR-IAM-02, FR-OWN-01, FR-OWN-02, FR-BILL-02.
+TRD TRACE: Sections 4, 5, 6, 13 and 18.
+
+8. IDENTITY, STAFF ACCESS AND PERMISSIONS WORKFLOW
+-------------------------------------------------
+ACTORS: Owner, Manager, Staff Member, Super Admin (platform scope only).
+
+8.1 Staff onboarding
+1. Owner/authorized manager opens Staff Management.
+2. Creates/invites a staff member.
+3. Assigns tenant membership.
+4. Assigns one or more permitted location/branch memberships.
+5. Assigns a default role (Reception, Chef, Waiter, Manager) or an approved
+   custom role if custom roles are enabled.
+6. Backend stores membership/role/permission mapping.
+7. Staff member accepts invitation/signs in.
+8. Backend evaluates permission keys and location scope on each protected API.
+
+8.2 Staff request authorization
+Every protected action is evaluated using:
+- Actor identity and account state.
+- Active tenant membership.
+- Required permission key.
+- Resource tenant_id.
+- Allowed location scope when branch-specific.
+- Resource state and valid action transition.
+- Feature entitlement where relevant.
+
+Examples of permission keys from the TRD:
+- orders.view / orders.create / orders.cancel / orders.update_status
+- kitchen.view / kitchen.accept / kitchen.update_eta / kitchen.mark_ready
+- billing.view / billing.create / billing.verify_payment / billing.refund
+- menu.view / menu.create / menu.update / menu.publish
+- offers.view / offers.manage / offers.publish
+- staff.view / staff.create / staff.manage_roles
+- inventory.view / inventory.update
+- subscriptions.view / subscriptions.manage
+- platform.tenants.create / platform.tenants.suspend / platform.plans.manage
+
+8.3 Staff deactivation or role change
+1. Owner/authorized manager changes role, location assignment or active state.
+2. Backend checks permission to make the change.
+3. Change is persisted and audited.
+4. Subsequent protected requests use the updated membership/permission state.
+5. A deactivated/unassigned staff user is denied unauthorized requests.
+
+RULES:
+- UI hiding is not authorization; API must enforce permission.
+- A tenant owner cannot grant platform-admin scope.
+- Branch staff cannot access unassigned branches unless another explicit
+  authorized assignment exists.
+
+PRD TRACE: FR-IAM-01 through FR-IAM-06; FR-STAFF-01, FR-STAFF-02.
+TRD TRACE: Sections 5 and 6.
+
+9. OWNER WORKFLOW: MENU, TABLES AND QR MANAGEMENT
+------------------------------------------------
+ACTOR: Owner or permitted manager.
+
+9.1 Menu lifecycle
+1. Owner opens Menu Management.
+2. Creates/updates categories.
+3. Creates/updates menu items.
+4. Sets name, description, image, category and price.
+5. Configures variants and modifier groups/options.
+6. Configures branch availability.
+7. Saves draft/configuration.
+8. Publishes menu changes.
+9. Customer menu reads the published/active menu for the resolved tenant and
+   location.
+10. Backend remains authoritative for current price and availability at order
+    submission time.
+
+9.2 Table and QR lifecycle
+1. Owner opens Table Management for a branch.
+2. Creates a table record.
+3. Platform generates a cryptographically random QR token.
+4. Platform stores token hash where feasible and provides QR output for display.
+5. QR token resolves only to the intended tenant/location/table.
+6. If QR must be replaced, owner rotates/revokes the old token.
+7. Revoked/unknown/inactive token is rejected by the resolver.
+
+PRD TRACE: FR-ORD-01 through FR-ORD-05; FR-OWN-01, FR-OWN-02.
+TRD TRACE: Sections 4 and 6.
+
+10. OWNER WORKFLOW: OFFERS AND CUSTOMER-FACING CONTENT
+------------------------------------------------------
+
+10.1 Offer lifecycle
+ACTOR: Owner or authorized manager.
+1. Owner opens Offers.
+2. Creates an offer.
+3. Defines the allowed offer details/conditions supported by the product.
+4. Defines validity window, branch scope and basic usage limits.
+5. Saves and publishes/schedules the offer.
+6. Backend evaluates activation/validity and customer eligibility.
+7. Customer interface displays active offers for the correct tenant/branch.
+8. During order submission, backend re-evaluates offer eligibility and limits.
+9. Redemption/usage is recorded and quota rules are enforced transactionally.
+10. Owner can deactivate an offer; customer view and subsequent order
+    validation use the updated status.
+
+The PRD leaves offer stacking, promo codes and per-customer caps as OPEN.
+Do not invent their rules.
+
+10.2 Visual content configurator (Phase 2 / SHOULD)
+ACTOR: Owner or permitted manager.
+1. Owner opens the page/content configurator.
+2. Selects a supported page and allowlisted content block.
+3. Edits only schema-approved fields such as text, image asset, link target,
+   display settings and theme tokens.
+4. Saves a draft.
+5. Previews the draft.
+6. Publishes the approved content version.
+7. Customer frontend renders the published block using trusted components.
+8. Previous content versions remain available for authorized rollback where
+   versioning is implemented.
+
+Allowed block examples in TRD:
+- hero/banner
+- promotional/offer banner
+- featured menu items
+- offer cards
+- announcement strip
+- restaurant information/contact
+- game invitation block
+
+Security constraints:
+- Do not execute owner-provided HTML, JavaScript or arbitrary CSS.
+- Reject unknown component names and unsafe/untrusted external URLs.
+- Backend validates block type and JSON properties.
+
+PRD TRACE: FR-OWN-03 through FR-OWN-07.
+TRD TRACE: Sections 12 and 13.
+
+11. CUSTOMER WORKFLOW: QR RESOLUTION AND MENU DISCOVERY
+-------------------------------------------------------
+ACTOR: Customer (guest or optional authenticated customer).
+
+PRECONDITIONS:
+- Restaurant tenant is active.
+- Branch is configured and table is active.
+- QR token has not been revoked.
+- Published menu is available.
+
+WORKFLOW:
+1. Customer scans the QR displayed at a restaurant table.
+2. Browser opens the tenant-aware customer route.
+3. Platform resolves the trusted hostname/tenant slug.
+4. Backend receives the QR token and resolves it server-side.
+5. Backend validates token, tenant, location and table status.
+6. Backend creates or resolves the applicable active table-session context
+   according to the table-session policy.
+7. Customer sees the correct restaurant/branch menu.
+8. Customer browses published categories/items and current availability.
+9. Customer selects an item and configures supported variant/modifier choices.
+10. Customer changes quantity and optional supported kitchen note.
+11. Customer adds, edits or removes cart lines before submission.
+
+ERROR PATHS:
+- Invalid/revoked QR: reject table resolution and do not open an order context.
+- Inactive tenant/branch/table: do not permit ordering.
+- Unavailable item: do not accept that item in a new order.
+- Reconnecting browser: load persisted state through API; do not assume browser
+  memory is the source of truth.
+
+PRD TRACE: FR-ORD-01 through FR-ORD-04; FR-IAM-01.
+TRD TRACE: Sections 4, 5, 13 and 15.
+
+12. CUSTOMER WORKFLOW: CART AND ORDER SUBMISSION
+------------------------------------------------
+ACTOR: Customer.
+
+WORKFLOW:
+1. Customer reviews the cart.
+2. Customer confirms the order.
+3. Frontend sends selected item identifiers, quantities, modifiers, optional
+   notes, table/session context and an idempotency key.
+4. Backend ignores/rejects client-supplied prices, totals, tax amounts,
+   tenant identity, role and payment status as authoritative values.
+5. Backend derives tenant/location/table context from validated QR/session
+   and server-side authorization context.
+6. Backend validates that the table session is eligible to accept orders.
+7. Backend checks the idempotency record/key.
+8. Backend loads authoritative menu item/variant/modifier prices.
+9. Backend checks branch-specific item availability.
+10. Backend evaluates eligible offers and quotas.
+11. Backend calculates subtotal, tax, discount and total in integer minor
+    currency units using the approved server configuration.
+12. Backend creates the order header.
+13. Backend stores immutable order-item snapshots including item names,
+    selected modifiers, quantity and price at submission time.
+14. Backend creates the initial order status event.
+15. Backend creates the transactional outbox event for ORDER_PLACED.
+16. Backend stores the idempotency result/reference.
+17. Database transaction commits.
+18. Backend returns the persisted order reference/status to the customer.
+19. Customer order view loads persisted state and subscribes to authorized
+    order updates where realtime is available.
+
+TRANSACTION RULE:
+If the transaction fails, no committed order or corresponding outbox event
+may remain. If the same submission is retried with the same idempotency key,
+it must return the same order rather than create another order/KOT.
+
+PRD TRACE: FR-ORD-03 through FR-ORD-08; BR-06, BR-07, BR-14.
+TRD TRACE: Sections 6, 7, 8 and 9.
+
+13. BACKEND WORKFLOW: ORDER PERSISTENCE AND NOTIFICATION FAN-OUT
+-----------------------------------------------------------------
+ACTORS: Backend API, PostgreSQL, outbox worker, Realtime, kitchen and reception.
+
+WORKFLOW:
+1. Order creation transaction completes and commits.
+2. The outbox worker finds the pending ORDER_PLACED record.
+3. Worker publishes an authorized event to the correct tenant/location
+   staff channel and relevant kitchen/reception audience.
+4. Kitchen dashboard receives a notification and loads the persisted KOT/order.
+5. Reception dashboard receives a notification and loads persisted order and
+   table/session details.
+6. Each dashboard confirms/refreshes from the API/database rather than
+   treating the event payload as the complete source of truth.
+7. Worker marks successful delivery according to the delivery strategy.
+8. Transient publish failures are retried with bounded exponential backoff
+   and jitter.
+9. After the configured retry limit, event is dead-lettered/alerted for review.
+
+IMPORTANT:
+- Notification delivery failure must not roll back a valid order.
+- A repeated event must not create duplicate KOTs/tasks.
+- Broad channels must not expose private customer or payment details.
+- All channels must enforce tenant/location/resource authorization.
+
+TRD TRACE: Sections 7, 9, 15 and 16.
+
+14. CHEF WORKFLOW: KITCHEN ORDER PROCESSING AND ETA
+--------------------------------------------------
+ACTOR: Chef/Kitchen Staff.
+
+PRECONDITIONS:
+- Chef is authenticated.
+- Chef has an active membership and kitchen permissions for the branch.
+- KOT belongs to the chef's permitted tenant/location/station.
+
+WORKFLOW:
+1. Chef opens Kitchen Dashboard/Kitchen Queue.
+2. Dashboard loads current persisted eligible KOTs for the branch/station.
+3. New order notification may arrive through Realtime.
+4. Chef opens the KOT and reviews item names, quantities, modifiers, notes
+   and order age.
+5. Chef accepts or rejects the order according to configured policy.
+6. Backend validates the allowed state transition and permission.
+7. Backend persists the new status and order_status_event with actor/time.
+8. If accepted, chef sets the estimated preparation time (ETA).
+9. Backend persists ETA and its update history.
+10. Realtime event informs the authorized customer, reception and staff views.
+11. Chef updates order to PREPARING when preparation begins.
+12. Backend validates and persists the transition.
+13. When preparation is complete, chef marks the order READY.
+14. Backend validates and persists READY state and event.
+15. The READY event is routed according to the branch service mode.
+
+EXCEPTION PATHS:
+- Invalid transition: backend rejects it.
+- Unauthorized branch/station access: deny and audit where appropriate.
+- Realtime failure: state remains persisted; dashboards recover using API.
+- Reject/cancel: use allowed exception path and record actor/reason where policy
+  requires it; do not directly rewrite status.
+
+ORDER STATUS PATH:
+PLACED -> ACCEPTED -> PREPARING -> READY -> SERVED -> COMPLETED
+
+Allowed exceptions defined by TRD:
+- PLACED -> REJECTED or CANCELLED
+- ACCEPTED -> CANCELLED (policy/permission required)
+- PREPARING -> CANCELLED (manager override/reason may be required)
+- READY -> CANCELLED only as an audited exception
+
+REJECTED, CANCELLED and COMPLETED are terminal for normal workflow.
+
+PRD TRACE: FR-OPS-01, FR-OPS-02, FR-OPS-03, FR-ORD-08.
+TRD TRACE: Sections 7, 8, 9 and 15.
+
+15. RECEPTION WORKFLOW: ORDER VISIBILITY AND BILL PREPARATION
+-------------------------------------------------------------
+ACTOR: Reception/Cashier.
+
+WORKFLOW:
+1. Reception dashboard loads persisted orders for its authorized branch.
+2. An ORDER_PLACED notification may alert reception to a new order.
+3. Reception opens the order/table-session record.
+4. Reception reviews order items, quantities, modifiers, snapshots and totals.
+5. Reception does not manually re-enter the customer's line items.
+6. Reception generates/reviews a restaurant bill from persisted order snapshots
+   and approved server-side calculation rules.
+7. Bill is linked to eligible order(s) and the applicable table/session context.
+8. Reception sees the restaurant's configured payment instructions/QR for the
+   correct branch when payment is requested.
+9. Reception can track order progress independently from payment status.
+
+BILLING RULES:
+- Bill total derives from persisted order snapshots and server calculation.
+- Historical item name/price/modifier snapshots remain available even if the
+  live menu item changes later.
+- Order READY does not imply bill PAID.
+- Exact bill timing/settlement policy follows the restaurant's approved
+  operational policy; do not invent a mandatory pay-before-serving rule.
+
+PRD TRACE: FR-OPS-04, FR-BILL-01, FR-BILL-03.
+TRD TRACE: Sections 6, 7 and 10.
+
+16. READY HANDOFF: WAITER SERVICE OR SELF-SERVICE
+------------------------------------------------
+ACTOR: Backend routing, Waiter, Customer.
+
+DECISION:
+The branch's configured service mode determines the READY handoff.
+
+PATH A - TABLE SERVICE
+1. Chef marks order READY.
+2. Backend persists READY and creates/publishes the ORDER_READY event.
+3. Waiter/service dashboard receives a task for an eligible order within its
+   authorized branch/section scope.
+4. Waiter opens the ready order and verifies destination/table details.
+5. Waiter collects the prepared order.
+6. Waiter records pickup through the authorized action.
+7. Backend persists pickup status/event.
+8. Waiter delivers the order to the correct table.
+9. Waiter marks the order SERVED.
+10. Backend persists SERVED status/event.
+11. The order may proceed to COMPLETED under the defined workflow/policy.
+
+PATH B - SELF SERVICE
+1. Chef marks order READY.
+2. Backend persists READY and creates/publishes ORDER_READY event.
+3. Customer order interface receives the authorized ready/pickup notification.
+4. Customer is instructed that the order is ready for collection.
+5. Order remains persisted; reconnect/refresh recovers current state.
+6. Completion handling follows the approved service/order policy.
+
+Do not route a self-service READY order into the waiter pickup queue.
+Do not route a table-service READY order only to customer pickup notification.
+
+PRD TRACE: FR-OPS-05, FR-OPS-06, FR-OPS-07.
+TRD TRACE: Sections 7, 8, 9 and 15.
+
+17. RESTAURANT BILL AND DIRECT RESTAURANT PAYMENT WORKFLOW
+---------------------------------------------------------
+ACTOR: Customer, Reception/authorized staff, Restaurant's external UPI/bank app.
+PAYER: Customer.
+PAYEE: Restaurant/branch.
+GATEWAY: No SaaS-company payment gateway is used for this diner payment.
+
+PRECONDITIONS:
+- Restaurant bill exists.
+- Correct branch has active restaurant-owned payment instructions/QR or other
+  accepted payment method configured.
+
+WORKFLOW:
+1. Customer/reception reviews the restaurant bill.
+2. Customer selects/views the restaurant's own configured UPI QR or payment
+   instructions.
+3. Customer pays directly using their own UPI/banking application or another
+   accepted restaurant payment method.
+4. Customer may optionally submit a transaction reference as a claim if that
+   optional feature is enabled.
+5. A customer-entered reference or uploaded QR is not proof of receipt.
+6. Reception/authorized staff checks the restaurant's own bank/UPI account
+   outside the SaaS platform.
+7. Staff verifies the actual received amount/payment.
+8. Staff enters the payment method, verified amount, reference and other
+   required record details.
+9. Backend checks billing.verify_payment permission and branch/tenant scope.
+10. Backend records the payment verification, staff actor and timestamp.
+11. Backend updates the restaurant bill/payment state and writes an audit event.
+
+PAYMENT STATE:
+UNPAID -> PAYMENT_REPORTED (optional) -> VERIFIED_PAID
+UNPAID -> PARTIALLY_PAID (only if partial payment is approved)
+UNPAID/PAYMENT_REPORTED -> VOIDED (authorized reason)
+VERIFIED_PAID -> REFUNDED/ADJUSTED only via approved correction workflow.
+
+STRICT SEPARATION:
+- This payment is stored in restaurant payment/bill records.
+- It is not created as a SaaS subscription payment.
+- The platform does not collect, hold, split, route or settle the diner payment.
+- Never mark verified paid only because the customer entered a reference.
+
+PRD TRACE: FR-BILL-01 through FR-BILL-07; BR-08 through BR-10.
+TRD TRACE: Section 10.
+
+18. TABLE-SESSION LIFECYCLE
+---------------------------
+STATUS: PROPOSED V1 MODEL; PRODUCT CONFIRMATION REMAINS OPEN.
+
+The PRD/TRD proposed V1 table-session behavior is:
+- One active OPEN table session per table at a time unless future policy allows
+  concurrent sessions.
+- One table session can group multiple separately submitted customer orders.
+- Each customer's confirmed submission remains a separate order and KOT.
+- Each order is linked to the same table session.
+- Draft carts remain private to the customer's browser/session by default.
+- Reception may generate one consolidated bill from eligible orders in the
+  table session.
+- Split billing is not included in V1 unless approved.
+- Table session closes only when there are no active orders and bill/payment
+  policy is satisfied.
+- Reopening requires permission and audit.
+
+FLOW:
+1. First valid customer QR context enters or creates the active table session.
+2. Customer keeps their own draft cart private.
+3. Customer submits an order; a separate order/KOT is created.
+4. Another customer at the same table may submit another separate order.
+5. Both orders link to the same active table session if V1 table-session policy
+   is approved.
+6. Reception reviews eligible session orders.
+7. Reception can consolidate eligible orders into a bill under the proposed
+   V1 model.
+8. Split billing is excluded unless separately approved.
+9. Once no active orders remain and payment/bill conditions are satisfied,
+   the table session can close.
+10. Reopening a closed session requires authorized action and audit.
+
+Do not implement this proposed model as a final product decision until
+OPEN-PRD-02 / OPEN-TRD-05 is approved.
+
+PRD TRACE: Section 4.2, BR-15, OPEN-PRD-02.
+TRD TRACE: Section 6.3, ADR-09, OPEN-TRD-05.
+
+19. GAMES AND REWARDS WORKFLOW
+------------------------------
+PHASE: Single-player engagement is Phase 1.5 SHOULD; multiplayer is Phase 2
+COULD / requires its own scope and transport decision.
+
+PRECONDITIONS:
+- Tenant has the applicable plan entitlement.
+- Owner has enabled the game feature for the tenant.
+- Game is available for the applicable restaurant/location context.
+
+19.1 Single-player game flow
+1. Customer opens the game area while using the restaurant customer interface.
+2. Backend checks tenant entitlement and owner feature toggle.
+3. Backend returns eligible games.
+4. Customer starts a game session.
+5. Backend creates a session linked to tenant/location and optionally table
+   session, with guest or authenticated customer identity context.
+6. Customer plays the game.
+7. Client submits completion/result data.
+8. Backend validates session state, timing, answers/score and attempt limits.
+9. Backend records verified game result and the rule version used.
+10. If a reward rule is satisfied, backend validates reward eligibility,
+    expiry, branch scope, per-user limit, total quota and other configured
+    constraints.
+11. Backend issues reward transactionally and records issuance ledger.
+12. Customer sees eligible reward.
+13. On redemption, backend revalidates expiry, limits and eligibility.
+14. Backend records redemption linked to the applicable bill/order where
+    supported by the approved reward policy.
+
+19.2 Multiplayer flow (later / conditional)
+1. Customer requests to create or join an eligible private room.
+2. Backend checks entitlement, owner toggle, room state, eligibility and
+   capacity.
+3. Backend authorizes the participant and room membership.
+4. Only authorized room members receive room events.
+5. Server validates game state, timing, answers and score.
+6. Result is stored with its applicable rule version.
+7. Reward, if eligible, follows the same server-side validation and ledger.
+
+REWARD SAFETY:
+- Client-provided score is never trusted as final.
+- Duplicate result cannot issue duplicate reward.
+- Concurrent redemption cannot exceed quota.
+- Cooldowns and attempt limits prevent abuse.
+- Game feature entitlement AND owner enablement are both required.
+
+PRD TRACE: FR-GAME-01 through FR-GAME-06.
+TRD TRACE: Section 12 and ADR-15.
+
+20. CUSTOMER CRM WORKFLOW
+-------------------------
+PHASE: Phase 2 SHOULD.
+
+1. Customer data is collected only as permitted by the approved product flow
+   and applicable consent/legal policy.
+2. Customer records and order history are associated with the correct tenant.
+3. Customer profile/history is available only to authorized tenant users.
+4. Data access is tenant-scoped and permission-checked.
+5. Owner/authorized staff use the CRM view for customer records and order
+   history within the permitted purpose.
+6. Customer data retention, export and deletion must follow approved policy.
+
+Do not make login mandatory for basic guest ordering merely to populate CRM.
+Do not collect data that is not required or authorized.
+
+PRD TRACE: FR-CRM-01, NFR-15, OPEN-PRD-08.
+TRD TRACE: Sections 5, 6, 15 and 19.
+
+21. EXTERNAL INTEGRATIONS WORKFLOW: ATTENDANCE / POS / INVENTORY
+----------------------------------------------------------------
+PHASE: Integration Hub is Phase 2 SHOULD; operational integrations are Phase 3.
+
+GOAL: Connect supported external tools without pretending every vendor is
+universally supported or forcing the restaurant to replace its existing tool.
+
+21.1 Owner configures an integration
+1. Owner opens Integrations.
+2. Selects a supported provider/connector (only providers actually implemented
+   and documented may be offered).
+3. Supplies the required provider connection information through a secure
+   server-side flow.
+4. Backend tests the connection.
+5. Owner/authorized user maps external identifiers to internal locations,
+   employees or items as applicable.
+6. Backend stores credential references securely and records configuration.
+7. Integration status and last sync/error information become visible.
+
+21.2 Data synchronization
+1. Connector receives a webhook, polls the provider API, or imports a CSV/XLSX
+   file depending on provider capability.
+2. Adapter validates and parses provider payload/file.
+3. Adapter maps provider-specific fields to normalized internal records.
+4. External employee/item/location IDs are mapped to internal records.
+5. Backend records sync run and per-record result/provenance.
+6. Duplicate records are prevented using provider ID + tenant/provider scope.
+7. Transient failures are retried.
+8. Permanent failures are surfaced for review.
+9. Owner can review connection state, sync time and errors.
+
+21.3 Supported methods
+- REST API.
+- Webhook.
+- Scheduled polling/synchronization.
+- CSV/XLSX/manual import fallback.
+
+Each vendor needs its own supported connector and documentation. Do not claim
+that all attendance/POS/inventory products integrate automatically.
+
+PRD TRACE: FR-INT-01 through FR-INT-03.
+TRD TRACE: Section 11.
+
+22. INVENTORY WORKFLOW
+----------------------
+PHASE: Phase 3 COULD / later.
+
+1. Authorized user manages branch-scoped inventory items.
+2. Supplier and purchase information may be recorded where module scope is
+   approved.
+3. Stock changes are recorded as stock movement/ledger entries.
+4. Low-stock thresholds may generate alerts.
+5. Stock is not silently overwritten without a corresponding movement record.
+6. If menu sales are later allowed to decrement stock automatically, recipe/
+   portion rules and cancellation/refund reversal behavior must first be
+   approved.
+
+PRD TRACE: FR-INV-01.
+TRD TRACE: Sections 6 and 11.
+
+23. PAYROLL PREPARATION INPUTS WORKFLOW
+---------------------------------------
+PHASE: Phase 3 COULD / later; full payroll compliance is not an initial scope.
+
+1. Approved attendance connector/import provides attendance data.
+2. Adapter normalizes employee ID, date, shift, check-in/out, break and leave
+   information where supplied by the provider.
+3. External employee IDs are mapped to internal staff records.
+4. Sync provenance and timestamps are saved.
+5. Duplicate records are rejected/ignored idempotently.
+6. Normalized attendance can become input for payroll preparation only after
+   company/restaurant rules are approved.
+7. Before salary calculation is enabled, confirm salary structures, pay period,
+   overtime, leave, deductions, rounding and applicable jurisdiction rules.
+
+Do not infer salary policy or claim legal payroll compliance without approved
+rules and validation.
+
+PRD TRACE: FR-PAYROLL-01, OPEN-PRD-03, OPEN-PRD-07.
+TRD TRACE: Section 11.3.
+
+24. SAAS PLANS, SUBSCRIPTIONS AND COMPANY PAYMENT GATEWAY
+---------------------------------------------------------
+PHASE: Phase 2 SHOULD for subscription launch; company gateway provider remains
+OPEN until company approval.
+
+PAYER: Restaurant owner/business.
+PAYEE: SaaS platform company.
+GATEWAY: Company's own selected payment gateway.
+
+24.1 Plan and entitlement workflow
+1. Super Admin creates/maintains plans and feature definitions.
+2. Super Admin configures tenant plan/feature entitlements.
+3. Backend stores the active subscription and entitlement state.
+4. Backend evaluates entitlement before permitting gated features.
+5. Tenant-level owner toggle is also required for optional games/features
+   where PRD/TRD specifies both entitlement and enablement.
+
+24.2 Subscription purchase/renewal workflow
+1. Owner opens subscription/plan page.
+2. Owner selects an available plan and billing cycle (once policy is finalized).
+3. Backend creates a pending subscription invoice/payment attempt.
+4. Backend creates checkout with the company's selected payment gateway.
+5. Owner completes payment through the gateway provider.
+6. Provider calls the backend webhook.
+7. Backend validates signature and event identity.
+8. Backend stores/processes the event idempotently.
+9. If the payment is verified successful, backend updates SaaS subscription
+   invoice/payment state and activates or extends entitlements according to
+   approved policy.
+10. If payment fails, is invalid or is duplicated, do not incorrectly activate
+    or extend access.
+11. Renewal/expiry/past-due/grace-period jobs process according to approved
+    policy.
+
+SUBSCRIPTION STATE MODEL:
+PENDING -> ACTIVE -> PAST_DUE -> GRACE_PERIOD -> ACTIVE or EXPIRED
+ACTIVE -> CANCELLED (access until paid-through date depends on policy)
+ACTIVE -> RENEWAL_PENDING -> ACTIVE (verified successful gateway event)
+
+Do not select or hardcode a gateway, price, billing cycle, grace duration or
+renewal policy until approved.
+
+24.3 Strict separation from diner payment
+- SaaS subscription payments use company gateway credentials and SaaS tables.
+- Restaurant customer payments are direct-to-restaurant and staff-verified.
+- Separate services, records, permissions, reports and webhook handling.
+- Never use restaurant_payments for SaaS subscriptions or subscription_payments
+  for restaurant food bills.
+
+PRD TRACE: FR-PLAT-02, FR-SUB-01 through FR-SUB-04, BR-09, BR-10.
+TRD TRACE: Sections 7, 8, 10, 11 and 17.
+
+25. TENANT DOMAIN LIFECYCLE
+---------------------------
+INITIAL ROUTING:
+- Use tenant platform slug/subdomain for the initial customer experience.
+- A route may resolve the tenant through verified hostname/slug and table QR.
+
+CUSTOM DOMAIN (SHOULD / Phase 2):
+1. Owner/Super Admin requests custom domain mapping.
+2. Platform records the requested hostname in pending state.
+3. Domain ownership is verified using the approved DNS challenge.
+4. Platform ensures hostname is uniquely mapped to one active tenant.
+5. Domain/TLS configuration is completed by the selected hosting/DNS setup.
+6. Platform activates the verified mapping.
+7. Incoming customer host resolves to the same shared customer application and
+   correct tenant route; no separate restaurant codebase is created.
+
+Do not require a restaurant IP address for this flow. Do not activate an
+unverified or duplicate hostname.
+
+PRD TRACE: FR-TEN-05, FR-TEN-06, FR-PLAT-03, OPEN-PRD-12.
+TRD TRACE: Sections 4, 13, 14 and ADR-10.
+
+26. TENANT ACTIVATION, SUSPENSION AND ARCHIVE
+--------------------------------------------
+ACTOR: Super Admin / platform-authorized user.
+
+ACTIVATION:
+- Tenant setup and required test criteria are complete.
+- Super Admin activates tenant.
+- Customer and tenant operations become available according to plan/config.
+
+SUSPENSION:
+1. Super Admin with platform permission initiates suspension.
+2. Backend records status/reason/actor/time and audit event.
+3. Tenant access is restricted according to the approved suspension policy.
+4. Tenant data is not silently deleted.
+5. Realtime/API access must respect current tenant state.
+
+REACTIVATION:
+1. Authorized Super Admin reviews tenant state.
+2. Reactivates tenant.
+3. Backend records the action and restores access according to active plan/
+   entitlement state.
+
+ARCHIVE:
+- Archive is an audited lifecycle action.
+- Order, financial and audit history must not be cascade-deleted without an
+  approved retention/deletion policy.
+- Export/deletion/retention obligations depend on approved jurisdiction policy.
+
+PRD TRACE: FR-TEN-03, FR-PLAT-01, BR-19.
+TRD TRACE: Sections 5, 6 and 16.
+
+======================================================================
+PART C - TECHNICAL EVENT AND DATA WORKFLOWS
+======================================================================
+
+27. REALTIME EVENT DELIVERY AND RECOVERY
+----------------------------------------
+
+27.1 Source-of-truth rule
+- Business state is first persisted in PostgreSQL.
+- Outbox event is committed in the same transaction as the state change.
+- A worker publishes events through authorized Supabase Realtime channels.
+- Realtime is a notification/delivery mechanism, not the authoritative store.
+
+27.2 Event publishing workflow
+1. Business transaction updates order/bill/offer/game state.
+2. Same transaction inserts a notification_outbox record.
+3. Transaction commits.
+4. Worker claims a pending outbox record.
+5. Worker publishes event with stable event ID, tenant/location/resource IDs,
+   type, timestamp, schema version and minimum safe payload.
+6. Worker marks delivery according to publish acknowledgement strategy.
+7. On transient error, worker retries with bounded exponential backoff+jitter.
+8. After max attempts, worker dead-letters/alerts the event.
+9. Event consumers process idempotently by event ID.
+
+27.3 Client reconnect workflow
+1. Client detects disconnect/reconnect.
+2. Client re-authenticates/resolves its current permitted context as needed.
+3. Client fetches current persisted state from REST/API.
+4. Client refreshes order queue/status using last known cursor/version where
+   supported.
+5. Client resumes authorized Realtime subscriptions.
+6. Missed notifications do not cause missed business state because database
+   records remain authoritative.
+
+27.4 Channel authorization
+- Staff channel: only authenticated staff with matching tenant/location scope.
+- Kitchen channel: kitchen staff and authorized manager for that location.
+- Waiter channel: staff authorized for branch/section.
+- Customer order channel: only the relevant customer/session can observe it.
+- Game room channel: only authorized room participants.
+- Never trust a client-supplied tenant ID or arbitrary channel name.
+
+TRD TRACE: Section 9.
+
+28. ORDER, RESTAURANT PAYMENT AND SUBSCRIPTION STATE MACHINES
+------------------------------------------------------------
+
+28.1 ORDER STATE
+PLACED -> ACCEPTED -> PREPARING -> READY -> SERVED -> COMPLETED
+
+Allowed exceptions:
+PLACED -> REJECTED or CANCELLED
+ACCEPTED -> CANCELLED (policy/permission required)
+PREPARING -> CANCELLED (manager override/reason may be required)
+READY -> CANCELLED only as an audited exception
+
+REJECTED, CANCELLED and COMPLETED are terminal for normal workflow.
+Every transition must store actor, role, timestamp, old/new state and optional
+reason. Backend validates the transition and resource scope.
+
+28.2 RESTAURANT BILL/PAYMENT STATE
+UNPAID -> PAYMENT_REPORTED (optional) -> VERIFIED_PAID
+UNPAID -> PARTIALLY_PAID (only if partial payment is approved)
+UNPAID/PAYMENT_REPORTED -> VOIDED (authorized reason)
+VERIFIED_PAID -> REFUNDED/ADJUSTED via approved correction workflow only.
+
+Payment status is independent of order status.
+
+28.3 SAAS SUBSCRIPTION STATE
+PENDING -> ACTIVE -> PAST_DUE -> GRACE_PERIOD -> ACTIVE or EXPIRED
+ACTIVE -> CANCELLED (paid-through access depends on policy)
+ACTIVE -> RENEWAL_PENDING -> ACTIVE (verified successful gateway event)
+
+Final state names, billing cycles, grace period and renewal policy remain
+subject to selected gateway and company approval.
+
+29. DATA OWNERSHIP AND MODULE BOUNDARIES
+----------------------------------------
+
+- Platform/Tenants module owns tenant lifecycle and platform tenancy records.
+- Locations module owns branch records and branch configuration.
+- Identity/Membership owns profiles, tenant memberships and location assignments.
+- Authorization owns roles, permission keys and role mappings.
+- Domain module owns verified hostname mappings.
+- Table/QR/Session module owns tables, QR tokens and table sessions.
+- Menu module owns categories, items, variants, modifiers and availability.
+- Offer module owns offers, conditions and redemption rules.
+- Order module owns order lifecycle, order items, status transitions and KOT
+  source records.
+- Kitchen and Service modules invoke order commands; they must not bypass
+  Order module lifecycle rules.
+- Restaurant Billing owns diner-facing bills and restaurant payment records.
+- Subscription module owns plans, SaaS invoices, SaaS payments, gateway events
+  and feature entitlements.
+- Entitlement service is the single backend authority for gated features.
+- Games module owns sessions, participants and game outcomes.
+- Rewards module owns reward rules, issuance and redemption ledger.
+- Staff module owns employee profile/assignment data.
+- Integration module owns provider adapters, credentials references, mappings,
+  sync runs/logs and normalized imported data.
+- Inventory module owns stock item and stock movement ledger.
+- CRM module owns consented/authorized customer records/history.
+- Content module owns tenant pages, blocks, versions, draft/preview/publish.
+- Notifications module owns outbox delivery and user notifications.
+- Audit module owns privileged/financial/action history.
+
+Module dependencies:
+- Modules use published application services/contracts.
+- Do not import another module's internal repository/model directly.
+- Avoid circular dependencies.
+- Do not let kitchen/service directly mutate order tables.
+- Do not mix restaurant payment records with SaaS subscription payment records.
+- Use one authoritative SQL migration history.
+
+30. API INTERACTION MAP
+-----------------------
+API prefix: /api/v1
+All endpoints must define actor, permission, tenant/location scope, validation,
+response/error contract, idempotency, transaction boundary, audit behavior,
+rate limits and positive/negative tests.
+
+30.1 CUSTOMER/PUBLIC
+GET    /public/resolve-qr/{token}
+GET    /public/menu
+POST   /customer/table-sessions/{sessionId}/orders
+GET    /customer/orders/{orderId}
+GET    /customer/table-sessions/{sessionId}/status
+POST   /customer/orders/{orderId}/payment-reference (optional claim)
+GET    /customer/offers
+GET    /customer/games
+POST   /customer/game-sessions
+POST   /customer/game-sessions/{id}/join
+POST   /customer/game-sessions/{id}/complete
+GET    /customer/rewards
+POST   /customer/rewards/{id}/redeem
+
+30.2 STAFF
+GET    /staff/orders
+POST   /staff/orders/{id}/accept
+POST   /staff/orders/{id}/reject
+POST   /staff/orders/{id}/status
+PUT    /staff/orders/{id}/eta
+GET    /staff/kitchen/queue
+GET    /staff/service/ready-orders
+POST   /staff/orders/{id}/pickup
+POST   /staff/orders/{id}/served
+GET    /staff/bills
+POST   /staff/bills
+POST   /staff/bills/{id}/verify-payment
+
+30.3 OWNER
+GET/PUT /owner/restaurant
+GET/POST /owner/locations
+GET/POST /owner/tables
+POST    /owner/tables/{id}/rotate-qr
+GET/POST /owner/menu/categories
+GET/POST /owner/menu/items
+PUT     /owner/menu/items/{id}
+POST    /owner/menu/publish
+GET/POST /owner/offers
+POST    /owner/offers/{id}/publish
+POST    /owner/offers/{id}/deactivate
+GET/POST /owner/staff
+PUT     /owner/staff/{id}/roles
+GET/POST /owner/content/pages
+POST    /owner/content/pages/{id}/preview
+POST    /owner/content/pages/{id}/publish
+GET/POST /owner/integrations
+GET     /owner/reports/summary
+
+30.4 SUPER ADMIN
+GET/POST /platform/tenants
+GET     /platform/tenants/{id}
+POST    /platform/tenants/{id}/activate
+POST    /platform/tenants/{id}/suspend
+POST    /platform/tenants/{id}/owner-invitation
+GET/POST /platform/plans
+PUT     /platform/tenants/{id}/entitlements
+POST    /platform/domains/verify
+GET     /platform/usage
+GET     /platform/audit-logs
+
+30.5 SAAS SUBSCRIPTION
+GET    /subscriptions/plans
+POST   /subscriptions/checkout
+GET    /subscriptions/current
+POST   /subscriptions/cancel
+POST   /webhooks/company-payment-gateway/{provider}
+
+The endpoint catalogue is a design reference; implement only the approved
+phase/story. It is not a requirement to build all endpoints at once.
+
+31. AUTHENTICATION, AUTHORIZATION AND TENANT ISOLATION
+------------------------------------------------------
+
+REQUEST WORKFLOW:
+1. Authenticate user/session using the approved Supabase Auth configuration.
+2. Backend validates JWT signature, issuer, audience, expiry and claims.
+3. Resolve active account and tenant membership.
+4. Derive tenant_id from trusted context, not request body.
+5. Resolve allowed location IDs/scope.
+6. Load required permission key.
+7. Check resource tenant_id and location_id.
+8. Check allowed state transition and feature entitlement where relevant.
+9. Execute operation only if all checks pass.
+10. Record audit event for privileged/financial actions.
+
+GUEST REQUEST WORKFLOW:
+1. Resolve secure QR token server-side.
+2. Validate active tenant/location/table.
+3. Create/resolve narrow guest table/session context.
+4. Limit access to permitted menu/order/session data only.
+5. Never grant staff dashboard access through guest context.
+
+RLS AND SECURITY:
+- Enable RLS on tenant-owned tables exposed through Supabase API or accessible
+  to non-owner database roles.
+- Public menu policy is read-only and limited to published/active menu data.
+- Guest access is limited to validated table/session/order context.
+- Private realtime channels enforce the same tenant/location/resource scope.
+- Cross-tenant negative tests are mandatory.
+- Privileged Supabase service-role key must never be exposed in browser code.
+- If backend uses a privileged connection/key that bypasses RLS, it must
+  centrally enforce tenant scope and permission checks, log privileged actions
+  and pass cross-tenant negative tests.
+
+PRD/TRD TRACE: FR-IAM requirements, BR-02, BR-03, NFR-01 through NFR-03.
+TRD TRACE: Section 5.
+
+32. FAILURE AND RECOVERY WORKFLOWS
+----------------------------------
+
+32.1 Order submission retry
+- Client sends an idempotency key.
+- If network response is lost, client retries with the same key.
+- Backend returns the existing order result rather than creating a duplicate.
+- A new key is used only for a genuinely new submission.
+
+32.2 Realtime interruption
+- Order/state remains in PostgreSQL.
+- Outbox publication retries.
+- Client reconnects and fetches persisted current status/queue.
+- Notification delivery failure does not roll back a committed order.
+
+32.3 Worker/queue failure
+- Durable job remains queued/pending.
+- Worker restart resumes eligible jobs.
+- Transient failures retry with bounded backoff.
+- Max-attempt failures are dead-lettered/alerted for review.
+
+32.4 Customer payment uncertainty
+- Customer-entered reference stays unverified.
+- Staff checks restaurant bank/UPI account externally.
+- Only authorized staff marks payment verified.
+- Verification actor/time/amount/reference are retained and audited.
+
+32.5 SaaS gateway webhook uncertainty
+- Backend validates signature and event identity.
+- Duplicate webhook is idempotently ignored/reconciled.
+- Invalid signature or event does not activate entitlement.
+- Successful verified event updates subscription according to approved policy.
+
+32.6 Integration failure
+- Sync run records error and provider context safely.
+- Transient provider/network error is retried.
+- Permanent mapping/validation error is visible for correction.
+- Reprocessing must not duplicate normalized records.
+
+32.7 Tenant/branch authorization failure
+- Request is denied.
+- No cross-tenant or unassigned-branch data is returned.
+- Security-relevant event is logged according to audit policy.
+
+32.8 Domain verification failure
+- Unverified/duplicate hostname is not activated.
+- Tenant keeps its platform slug/subdomain route.
+
+32.9 File/asset failure
+- Customer/owner UI shows safe failure state.
+- Existing valid asset/configuration remains authoritative until a valid update
+  has been stored and published.
+
+PRD TRACE: NFR-01, NFR-04, NFR-05, R-01 through R-07.
+TRD TRACE: Sections 9, 11, 14, 15 and 16.
+
+======================================================================
+PART D - END-TO-END SCENARIOS AND DELIVERY
+======================================================================
+
+33. COMPLETE END-TO-END SCENARIOS
+---------------------------------
+
+SCENARIO 01: NEW RESTAURANT BECOMES OPERATIONAL
+1. Super Admin creates tenant.
+2. Platform creates tenant slug and first location.
+3. Owner is invited and activates access.
+4. Owner configures restaurant/branch settings and service mode.
+5. Owner creates/publishes menu.
+6. Owner creates tables and generates QR tokens.
+7. Owner configures restaurant payment QR/instructions.
+8. Owner invites staff and assigns roles/locations.
+9. Test order is submitted and processed.
+10. Notifications and branch workflows are verified.
+11. Super Admin activates tenant.
+EXPECTED: tenant is operational on shared platform without custom deployment.
+
+SCENARIO 02: CUSTOMER COMPLETES A TABLE-SERVICE ORDER
+1. Customer scans active table QR.
+2. Backend resolves tenant/location/table.
+3. Customer browses menu as guest.
+4. Customer configures items and confirms cart.
+5. Backend validates item/price/offer/tax and idempotency.
+6. Order, item snapshots, initial status and outbox event commit atomically.
+7. Kitchen and reception are notified.
+8. Chef accepts and sets ETA.
+9. Customer sees status/ETA.
+10. Chef updates PREPARING then READY.
+11. Waiter receives authorized ready task.
+12. Waiter picks up and delivers order.
+13. Waiter marks SERVED; workflow proceeds to COMPLETED as defined.
+14. Reception reviews/generates bill from persisted order data.
+15. Customer pays restaurant directly.
+16. Authorized staff verifies payment and records it.
+EXPECTED: one persisted order, correct KOT, correct service route and separate
+bill payment state.
+
+SCENARIO 03: CUSTOMER COMPLETES A SELF-SERVICE ORDER
+1-10. Same steps as Scenario 02 through Chef marking READY.
+11. Backend sees branch service mode SELF SERVICE.
+12. Customer receives ready/pickup instruction.
+13. No waiter pickup task is created for this READY handoff.
+14. Customer collects order under restaurant process.
+15. Reception bill/payment workflow runs independently.
+EXPECTED: READY is routed to customer pickup flow, not waiter flow.
+
+SCENARIO 04: MULTIPLE CUSTOMERS AT ONE TABLE (PROPOSED V1)
+1. Multiple customers scan the same table QR.
+2. Each browser/customer context keeps its own draft cart private.
+3. Each customer submission creates a separate order/KOT.
+4. Under the proposed table-session model, orders link to one active session.
+5. Reception can consolidate eligible orders into one bill.
+6. Split bill is not included unless approved.
+EXPECTED: behavior only becomes binding after table-session decision approval.
+
+SCENARIO 05: RESTAURANT CUSTOMER PAYS BY RESTAURANT UPI QR
+1. Bill exists.
+2. Customer views restaurant's branch-specific QR/instructions.
+3. Customer pays the restaurant through their UPI/banking application.
+4. Customer may provide a reference claim if enabled.
+5. Reception verifies actual receipt in restaurant bank/UPI application.
+6. Authorized staff records verified payment.
+EXPECTED: SaaS company gateway is never involved in diner food payment.
+
+SCENARIO 06: OWNER PUBLISHES AN OFFER
+1. Owner opens Offers.
+2. Creates offer details and approved conditions.
+3. Defines validity, branch scope and usage limits.
+4. Publishes/schedules offer.
+5. Backend makes offer available according to lifecycle.
+6. Customer interface shows active eligible offer.
+7. Order submission revalidates offer at server side.
+8. Quota/redemption record is saved transactionally.
+EXPECTED: no manual table-by-table announcement and no client-trusted discount.
+
+SCENARIO 07: GAME REWARD IS ISSUED
+1. Customer opens games.
+2. Backend verifies tenant feature entitlement and owner enablement.
+3. Customer starts a session.
+4. Backend records session and validates completion/result.
+5. Backend evaluates reward rule and limits.
+6. Backend issues reward transactionally if eligible.
+7. Customer sees reward.
+8. Redemption revalidates expiry, branch applicability, quotas and limits.
+EXPECTED: forged/duplicate score cannot create duplicate reward.
+
+SCENARIO 08: RESTAURANT BUYS/RENEWS A SAAS PLAN
+1. Owner opens SaaS subscription page.
+2. Owner selects available plan/billing cycle.
+3. Backend creates pending checkout/invoice/payment attempt.
+4. Backend starts checkout with company's selected gateway.
+5. Owner pays SaaS company using provider checkout.
+6. Gateway sends webhook to backend.
+7. Backend verifies signature/event identity and processes idempotently.
+8. Verified success updates SaaS subscription and entitlement.
+9. Feature access follows server-side entitlement/grace policy.
+EXPECTED: company gateway is used only for SaaS subscription payment.
+
+SCENARIO 09: ATTENDANCE DATA SYNCHRONIZES
+1. Owner configures an actually supported connector or chooses file import.
+2. Connection is tested or file is validated.
+3. External employee identifiers are mapped to platform staff identifiers.
+4. Provider data is normalized.
+5. Sync run and record provenance are saved.
+6. Duplicate source records are prevented.
+7. Errors/retries are shown to authorized owner/manager.
+EXPECTED: supported data is imported reliably; unsupported providers are not
+represented as already integrated.
+
+SCENARIO 10: REALTIME SERVICE IS INTERRUPTED
+1. An order/status update commits to PostgreSQL.
+2. Outbox record is saved in the same transaction.
+3. Realtime publish fails or client disconnects.
+4. Worker retries publication.
+5. Client reconnects and fetches authoritative current state through API.
+6. Client resumes authorized subscriptions.
+EXPECTED: committed order/state is not lost due to realtime outage.
+
+34. IMPLEMENTATION SEQUENCE FOR ANTIGRAVITY
+-------------------------------------------
+
+Do not implement every module in one giant generation task. Follow the TRD
+phase sequence and only implement the phase/story explicitly requested.
+
+PHASE A - REPOSITORY DISCOVERY AND ARCHITECTURE DECISIONS
+A1. Inspect current repository, languages, frameworks, tooling and tests.
+A2. Map existing code to proposed modules; do not overwrite working code.
+A3. Identify unresolved ADRs blocking the requested implementation.
+A4. Prepare NestJS vs FastAPI proof-of-concept plan if ADR-01 is open.
+EXIT: architecture decision approved and implementation plan reviewed.
+
+PHASE B - FOUNDATION
+B1. Environment configuration and local developer setup.
+B2. Tenant/location schema and migration tests.
+B3. Supabase Auth and membership context.
+B4. RBAC, permissions and RLS.
+B5. Super Admin tenant onboarding and owner invitation.
+B6. Audit baseline and cross-tenant tests.
+EXIT: two-tenant negative tests pass.
+
+PHASE C - CUSTOMER ORDERING VERTICAL SLICE
+C1. Table/QR token generation, revocation and resolution.
+C2. Published menu read API and mobile customer menu.
+C3. Cart validation and idempotent order creation.
+C4. Order/KOT persistence and outbox event.
+C5. Customer status/ETA page and reconnect recovery.
+EXIT: guest customer submits one order exactly once.
+
+PHASE D - STAFF OPERATIONS
+D1. Kitchen queue and state transitions.
+D2. Chef ETA management.
+D3. Reception order queue and bill generation.
+D4. Waiter pickup/served workflow.
+D5. Self-service READY flow.
+EXIT: order completes end-to-end for both service modes.
+
+PHASE E - RESTAURANT BILLING AND PAYMENT RECORDING
+E1. Restaurant payment settings/QR configuration.
+E2. Bill calculation and immutable bill lines.
+E3. Staff verification permissions and audit.
+E4. Payment-flow separation tests.
+EXIT: customer pays restaurant directly; platform records verification only.
+
+PHASE F - OWNER MANAGEMENT
+F1. Menu/category/item management.
+F2. Table and QR management.
+F3. Offer lifecycle and eligibility.
+F4. Basic owner reporting.
+EXIT: owner can self-manage core content without code.
+
+PHASE G - ENGAGEMENT
+G1. Game entitlement and owner toggle.
+G2. One single-player game session.
+G3. Server-validated result and reward rules.
+G4. Reward redemption ledger and limits.
+G5. Multiplayer only after its scope/transport decision.
+EXIT: no unauthorized or duplicate reward issuance.
+
+PHASE H - SAAS SUBSCRIPTIONS AND DOMAIN EXPANSION
+H1. Plans, feature catalogue and entitlements.
+H2. Company gateway checkout adapter.
+H3. Verified webhook and reconciliation.
+H4. Custom domain verification and tenant mapping.
+EXIT: subscription entitlement changes only from verified gateway state.
+
+PHASE I - INTEGRATIONS / INVENTORY / PAYROLL INPUTS
+I1. Provider connector contract.
+I2. First approved attendance/POS connector.
+I3. CSV import fallback.
+I4. Normalized mappings, retry and sync logs.
+I5. Inventory ledger/suppliers where approved.
+I6. Payroll inputs only after policy approval.
+EXIT: first approved connector runs idempotently and observably.
+
+35. RELEASE GATES AND ACCEPTANCE CHECKLIST
+------------------------------------------
+
+35.1 Core production pilot acceptance
+[ ] Super Admin can create tenant and invite owner.
+[ ] Owner configures branch, service mode, menu and tables.
+[ ] System generates a valid QR for each table.
+[ ] Customer scans, browses, creates cart and submits as guest.
+[ ] Backend validates price and persists one order/KOT exactly once.
+[ ] Correct kitchen and reception dashboards receive the order.
+[ ] Chef accepts, sets ETA, updates PREPARING and READY.
+[ ] Customer recovers latest status after refresh/disconnect.
+[ ] READY routes correctly to waiter or self-service.
+[ ] Reception generates/reviews bill from persisted order snapshots.
+[ ] Customer pays restaurant directly; staff verifies and records payment.
+[ ] Owner publishes/deactivates an offer without code changes.
+[ ] Two-tenant tests prove no cross-tenant access.
+[ ] Audit events exist for privileged/financial actions.
+[ ] Tests, build, migration validation and pilot runbook pass.
+
+35.2 Mandatory technical test scenarios
+T-01 Tenant A cannot read/write/subscribe to Tenant B records.
+T-02 Branch user cannot access an unassigned branch without permission.
+T-03 Duplicate order idempotency key creates one order/KOT only.
+T-04 Browser-supplied item price is ignored/rejected.
+T-05 Realtime disconnect does not lose order/status transition.
+T-06 Customer UPI reference does not mark bill verified-paid.
+T-07 Authorized staff payment verification records actor/time/amount.
+T-08 Company gateway webhook signature is verified and event idempotent.
+T-09 Restaurant payment cannot mutate SaaS subscription records.
+T-10 SaaS payment cannot mutate restaurant bill/payment records.
+T-11 READY order routes to correct waiter/self-service flow.
+T-12 Unentitled tenant cannot create game session by direct API call.
+T-13 Duplicate/forged game result cannot issue multiple rewards.
+T-14 Invalid content block type/properties are rejected.
+T-15 Integration retry does not duplicate normalized records.
+T-16 QR revocation prevents future table resolution/order creation.
+
+35.3 Definition of Done for every implementation story
+- Requirement ID/user story is identified.
+- Tenant/location scope and authorization are implemented and tested.
+- Input validation and error handling exist.
+- Migrations/constraints/indexes exist where needed.
+- Audit/outbox behavior exists where required.
+- Relevant unit/integration/E2E tests pass.
+- UI has loading, empty, error and unauthorized states.
+- OpenAPI and relevant documentation are updated.
+- Lint/typecheck/tests/build pass or limitations are reported.
+- No secret or unsafe temporary bypass remains.
+- Agent reports exact files and verification commands/results.
+
+======================================================================
+36. OPEN DECISIONS - MUST NOT BE SILENTLY RESOLVED
+======================================================================
+
+PRODUCT OPEN ITEMS:
+OPEN-PRD-01 Backend selection: NestJS/TypeScript vs FastAPI/Python.
+OPEN-PRD-02 Table session policy: approve separate customer orders +
+            consolidated bill as V1; decide split billing if needed.
+OPEN-PRD-03 Launch country, currency, tax and invoice/legal rules.
+OPEN-PRD-04 Company SaaS gateway and billing-cycle/renewal policy.
+OPEN-PRD-05 SaaS plans, feature limits, quotas and pricing.
+OPEN-PRD-06 Hosting budget and initial concurrency target.
+OPEN-PRD-07 First attendance/POS/inventory integration provider.
+OPEN-PRD-08 Customer order history/login requirement for Phase 1.
+OPEN-PRD-09 Customer payment reference/proof upload feature decision.
+OPEN-PRD-10 Offer stacking, promo codes and per-customer caps.
+OPEN-PRD-11 First single-player game and exact reward policy.
+OPEN-PRD-12 Custom domain phase (pilot or Phase 2).
+
+TECHNICAL OPEN ITEMS:
+OPEN-TRD-01 Backend framework and corresponding worker stack.
+OPEN-TRD-02 ORM and application database-access approach.
+OPEN-TRD-03 Company SaaS gateway provider.
+OPEN-TRD-04 Geography, currency, tax and invoice implementation.
+OPEN-TRD-05 Table-session/consolidated/split-bill policy.
+OPEN-TRD-06 Hosting/cloud/CDN/DNS and budget.
+OPEN-TRD-07 Redis/queue provider and worker topology.
+OPEN-TRD-08 Load/concurrency/SLO and backup RPO/RTO targets.
+OPEN-TRD-09 First external connector/provider.
+OPEN-TRD-10 Game design and need for dedicated multiplayer gateway.
+OPEN-TRD-11 Retention, customer consent and deletion requirements.
+
+The workflow may describe the proposed path but must label it PROPOSED until
+its decision is approved and recorded in an ADR/product decision log.
+
+37. GLOSSARY
+-------------
+Tenant          Restaurant business/chain using the SaaS.
+Location        Physical branch/outlet belonging to a tenant.
+Table           Dining table inside a location.
+QR token        Secure, revocable table-context token.
+Table session   Dining visit context grouping one or more orders.
+Order           Customer-submitted order with its own items and state history.
+KOT             Kitchen Order Ticket.
+RBAC            Role-Based Access Control.
+RLS             PostgreSQL Row-Level Security.
+ETA             Estimated preparation time supplied by kitchen.
+Idempotency     Safe retry without duplicate business action.
+Outbox          Durable DB event record awaiting asynchronous delivery.
+Entitlement     Server-side permission to use a plan-gated feature.
+PWA             Progressive Web App.
+RPO/RTO         Recovery Point / Recovery Time Objective.
+
+END OF COMPLETE SYSTEM WORKFLOW
+======================================================================
+
+
+===============================================================================
+PART E — EXTERNAL FOOD-DELIVERY MARKETPLACE ORDER WORKFLOW (ADDED IN v1.2)
+===============================================================================
+
+SCOPE AND STATUS
+---------------
+This section describes the intended workflow for orders placed by customers
+on supported third-party food-delivery marketplaces such as Zomato and Swiggy.
+It is conditional on an approved direct POS/partner integration or an
+authorized aggregation provider. It does not assert that any provider access,
+commercial eligibility, credentials, certification or sandbox is already
+available. PRD and TRD v1.0 remain authoritative.
+
+ACTORS
+------
+- Marketplace customer: places an order in the marketplace app.
+- Marketplace / authorized aggregator: delivers order events and receives
+  acknowledgements/status updates under its contract.
+- Restaurant reception / manager: monitors and accepts/rejects orders where
+  the provider workflow permits.
+- Kitchen staff: prepares accepted orders.
+- Restaurant owner/admin: connects and maps the provider outlet to a branch.
+- Platform integration worker: validates, normalizes, dispatches and retries
+  provider events/actions.
+
+PRECONDITIONS
+-------------
+- A provider connector route has been approved by the product owner.
+- Current provider/aggregator API documentation and contractual permissions
+  are available.
+- Credentials, webhook verification details and sandbox/test outlet access
+  have been issued through the provider's approved process.
+- The marketplace outlet is mapped to the correct SaaS tenant and branch.
+- Required menu/item mapping and operational settings are configured where
+  the connector requires them.
+
+ORDER INGESTION WORKFLOW
+------------------------
+1. A customer places an order in a supported marketplace.
+2. The marketplace or authorized aggregator emits an order event/webhook.
+3. The platform receives the event at the provider-specific integration edge.
+4. The platform authenticates/verifies the event according to the provider
+   contract; invalid events are rejected and safely logged.
+5. A durable inbox record is written before asynchronous processing. The
+   provider event ID / external order ID is used for deduplication.
+6. The provider adapter maps the source payload into the canonical external
+   order model without leaking provider-specific fields into core order logic.
+7. The connector resolves provider outlet ID to tenant_id and location_id.
+   Unknown or ambiguous mappings go to an error/review queue; never guess.
+8. The order and item/modifier snapshots, source references, initial internal
+   state and outbox event are committed transactionally.
+9. The order appears in the branch's External Orders queue with source label,
+   external reference, order timer/acknowledgement deadline where supplied,
+   items, quantities, modifiers, instructions, amounts and permitted
+   fulfilment/customer details.
+10. Reception/manager receives a prominent visual and audible alert where
+    supported by the UI/device settings.
+
+STAFF ACCEPT / REJECT WORKFLOW
+------------------------------
+11. An authorized staff member reviews the order and its acknowledgement
+    deadline.
+12. Staff accepts or rejects the order in the unified platform dashboard.
+13. The backend validates actor permissions, current order state, provider
+    deadline/rules and any provider-specific reason requirements.
+14. The action is committed with actor/time and an idempotency key.
+15. An outbox job dispatches the mapped accept/reject action to the provider.
+16. Provider acknowledgement is stored and displayed. A timeout, rejection,
+    rate limit or connection failure remains visible and is retried/reconciled
+    according to provider policy; do not show a false success.
+17. If provider acknowledgement deadline expires, the UI clearly indicates
+    the state and the connector follows the provider's documented timeout
+    behavior. Never invent or override marketplace rules.
+
+KITCHEN AND STATUS WORKFLOW
+---------------------------
+18. Once accepted according to the provider workflow, the canonical order is
+    routed to the correct branch kitchen queue as an external-channel KOT.
+19. Kitchen staff see a clear marketplace/source label and external order
+    reference; no dine-in table is required.
+20. Chef/kitchen staff update preparation status using permitted transitions.
+21. The platform maps internal status to provider-supported status values.
+22. Status updates are dispatched asynchronously and idempotently; provider
+    acknowledgement, retry and failure state are retained.
+23. Pickup/ready/handover events are sent only if supported by the provider
+    contract. Delivery partner arrival/assignment events are displayed only
+    when the provider supplies them.
+24. Cancellation, refund, customer cancellation and delivery-partner events
+    are reflected only to the extent exposed by the connector/provider.
+
+FINANCIAL AND DATA BOUNDARIES
+-----------------------------
+- External marketplace orders are not dine-in table orders and do not require
+  a table_session_id.
+- Keep source_channel and fulfilment_type explicit (for example delivery or
+  pickup) and preserve provider order identifiers.
+- Do not include marketplace orders in dine-in consolidated table bills by
+  default.
+- Keep marketplace collection, COD, commission, discount, refund, charges
+  and restaurant settlement distinct from restaurant UPI verification and
+  from the SaaS company's subscription payment gateway.
+- Store provider-supplied payment/settlement facts with provenance. Do not
+  claim that funds have settled to the restaurant bank account without a
+  verified settlement source and an approved reconciliation process.
+- Store only customer/delivery personal data necessary to fulfil the order;
+  follow the approved retention and privacy policy.
+
+FAILURE AND RECOVERY PATHS
+--------------------------
+- Duplicate webhook: return/record idempotent handling; never create another
+  canonical order or KOT.
+- Invalid signature/authentication: reject; do not process the order.
+- Unknown provider outlet mapping: quarantine for authorized review; do not
+  route to a guessed tenant or branch.
+- Provider API timeout/rate limit: bounded retry with backoff, visible status,
+  dead-letter/alert after configured attempts and reconciliation support.
+- Failed accept/reject acknowledgement: show pending/failed state accurately;
+  do not tell staff that the marketplace accepted the action without proof.
+- Status dispatch failure: preserve the internal order state, retry outbound
+  synchronization and expose connector health/error details to authorized
+  staff.
+- Provider outage: preserve already ingested orders and local operational
+  state; show integration degraded state. Follow the provider's documented
+  fallback and avoid unapproved portal automation.
+
+IMPLEMENTATION GATES FOR ANTIGRAVITY
+------------------------------------
+GATE 1 — PROVIDER READINESS
+- Confirm direct POS/partner eligibility or authorized aggregator contract.
+- Obtain current API/webhook documentation, sandbox, credentials, outlet
+  mapping, certification and allowed-action details.
+- Confirm commercial fees, support/SLA and pilot outlet.
+- Approve privacy/retention and marketplace financial reconciliation policy.
+
+GATE 2 — PROVIDER-NEUTRAL FOUNDATION
+- Define canonical external order model and provider adapter interface.
+- Define durable webhook inbox, provider event deduplication and outbox.
+- Add tenant-safe outlet mapping and integration health/status records.
+- Add provider-neutral tests and synthetic fixtures only.
+
+GATE 3 — FIRST APPROVED CONNECTOR
+- Implement only the selected provider's documented event/action contract.
+- Add signature/authentication, contract fixtures, retry, reconciliation,
+  idempotency, tenant-isolation and failure-path tests.
+- Verify acceptance deadline, accept/reject, kitchen routing and status updates
+  against provider sandbox/certification requirements.
+
+GATE 4 — PILOT AND OPERATIONS
+- Run an approved pilot outlet with staff training and support runbook.
+- Monitor event lag, acknowledgement failures, duplicate events, stuck orders,
+  provider API errors and reconciliation mismatches.
+- Expand to another marketplace only after the first connector is stable.
+
+OPEN DECISIONS — DO NOT GUESS
+----------------------------
+- Direct marketplace POS/partner access vs authorized aggregation middleware.
+- First marketplace and pilot restaurant/outlet.
+- Provider commercial eligibility, fees, support and certification.
+- Exact supported order actions, event schema, acknowledgement deadlines and
+  status mapping for each selected provider.
+- Marketplace collection/COD, commissions, discounts, refunds, taxes,
+  packaging/delivery charges and settlement reconciliation model.
+- Personal data retention, masked customer details and staff access policy.
+
+TRACEABILITY
+------------
+Refer to PRD v1.0 external order requirements FR-EXT-01 onward, external
+integration dependencies/risks and open decisions D-13/D-14. Refer to TRD v1.0
+external order adapter, webhook inbox/outbox, API, canonical data model,
+reliability requirements and ADR-13/ADR-15. If IDs differ in a later approved
+revision, the latest PRD/TRD take precedence.
+
+END OF WORKFLOW v1.2 ADDENDUM

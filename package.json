@@ -1,0 +1,18 @@
+{
+  "name": "restaurant-saas-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Multi-tenant Restaurant SaaS Operating Platform",
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck"
+  },
+  "devDependencies": {
+    "turbo": "^2.4.4",
+    "typescript": "^5.7.3"
+  },
+  "packageManager": "pnpm@12.9.1"
+}

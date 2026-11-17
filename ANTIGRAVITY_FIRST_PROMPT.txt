@@ -1,0 +1,20 @@
+Use this prompt in a new Antigravity conversation after opening the project repository:
+
+"Read AGENTS.md and all three documents in docs/ completely before making any changes:
+- docs/RESTAURANT_SAAS_PRD_v1.0.txt
+- docs/RESTAURANT_SAAS_TRD_v1.0.txt
+- docs/RESTAURANT_SAAS_END_TO_END_WORKFLOW_v1.2.txt
+
+FIRST TASK: repository discovery and implementation-readiness review ONLY. Do not modify, create, delete, scaffold, migrate or deploy anything yet.
+
+Inspect the actual repository, identify its current stack and report:
+1. Repository structure, framework/runtime versions, package managers and existing conventions.
+2. Existing features, database schema/migrations, tests, environment configuration and deployment setup.
+3. Mapping and gaps against PRD/TRD v1.0, including tenant/location isolation and current order lifecycle.
+4. All OPEN/PROPOSED ADRs that block implementation, especially NestJS vs FastAPI and the first food-delivery integration route.
+5. Security, authorization, data privacy, payment separation and operational risks.
+6. A phased implementation plan with PRD requirement IDs, dependencies, impacted modules, test gates and realistic sequencing.
+7. For Zomato/Swiggy or any marketplace connector, list the exact provider documentation, approvals, sandbox credentials, outlet mapping and commercial details still required. Do not invent endpoints or credentials.
+8. Recommend the smallest first vertical slice that can safely proceed without resolving blocked decisions.
+
+Do not implement the entire platform. Do not silently select an OPEN technology/provider decision. Do not use real customer/provider data. Do not alter existing files during discovery. Present the report and wait for my explicit approval before implementation."

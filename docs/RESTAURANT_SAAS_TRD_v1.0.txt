@@ -1,0 +1,767 @@
+RESTAURANT SAAS TRD V0.9
+========================
+
+Plain-text export of the approved working document content.
+Formatting, page layout and embedded image pixels are not represented in this TXT file.
+Embedded diagrams are indicated at their original positions with descriptive placeholders.
+
+RESTAURANT OPERATING PLATFORM
+
+Technical Requirements Document
+
+Proposed system architecture, data model, API contracts, security and delivery design
+TECHNICAL REQUIREMENTS DOCUMENT
+Version 1.0  |  14 November 2026
+Status: Draft for product, engineering and business review
+Prepared for the company project team
+This document records the current product direction and proposed implementation baseline. Open decisions are explicitly identified and must be confirmed before production commitments.
+
+DOCUMENT CONTROL
+----------------
+
+[TABLE 2]
+| Field | Value |
+| --- | --- |
+| Document | Restaurant SaaS Platform - Technical Requirements Document |
+| Version / status | 1.0 - Draft for review |
+| Date | 14 November 2026 |
+| Audience | Product owners, business stakeholders, engineering, QA, operations and implementation partners |
+| Scope | Defines the logical architecture and technical implementation requirements for the PRD. The backend framework remains an open Architecture Decision Record; the technical contracts are framework-neutral. |
+| Decision status | Technology and selected workflow details remain provisional where identified in the open-decision register. |
+
+Revision history
+~~~~~~~~~~~~~~~~
+
+[TABLE 3]
+| Version | Date | Change |
+| --- | --- | --- |
+| 0.9 | 12 Nov 2026 | Initial working specification based on the agreed product vision and architecture discussion. |
+| 1.0 | 14 Nov 2026 | Added provider-independent external food-delivery order integration architecture, data model, APIs, reliability and security requirements. |
+
+CONTENTS
+--------
+
+- 1. Purpose, status and architecture principles
+- 2. System context and logical architecture
+- 3. Technology stack options and provisional baseline
+- 4. Multi-tenancy, domains and identity
+- 5. Authorization and security architecture
+- 6. Core workflow and state machines
+- 7. Data model and database requirements
+- 8. API design and endpoint catalogue
+- 9. Realtime events and delivery reliability
+- 10. Payment architecture
+- 11. Background jobs and integrations
+- 11.4 External food-delivery order integrations
+- 12. Games, rewards and content configuration
+- 13. Deployment, environments and observability
+- 14. Non-functional engineering requirements
+- 15. Testing and quality strategy
+- 16. Backup, recovery and operational readiness
+- 17. Architecture decision register
+- 18. Implementation checklist and glossary
+
+1. PURPOSE, STATUS AND ARCHITECTURE PRINCIPLES
+----------------------------------------------
+
+This TRD translates the product requirements into a logical implementation design. It is written so that the core contracts, domain model and security rules remain valid whether the company selects a TypeScript/NestJS backend or a Python/FastAPI backend.
+
+[TABLE 4]
+| Architecture status / Proposed baseline: Next.js + TypeScript frontend, Supabase PostgreSQL/Auth/Realtime/Storage, and a modular monolith backend. NestJS and FastAPI are both viable backend candidates. The framework and its ORM/queue pairing must be approved through the decision register before implementation is locked. |
+
+1.1 Architecture principles
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- Multi-tenant by design: tenant and branch context are explicit in data, API authorization and audit records.
+- Modular monolith first: domain modules are separated in code and dependency direction, but deployed as a small number of applications initially.
+- PostgreSQL is the source of truth for orders, order status, bills, subscription state, rewards and configuration.
+- Realtime is a delivery mechanism, not the source of truth. Clients can reconnect and fetch current state.
+- Critical business operations are transactional and idempotent.
+- Tenant-facing content configuration is schema-driven; user-supplied code is never executed.
+- Third-party providers are isolated behind adapters and normalized internal contracts.
+- Customer meal payment and company SaaS subscription payment are separate business domains, records and provider integrations.
+- Security is enforced server-side and at the database boundary where applicable; frontend hiding is not authorization.
+
+2. SYSTEM CONTEXT AND LOGICAL ARCHITECTURE
+------------------------------------------
+
+[IMAGE OMITTED IN TEXT VERSION: Figure 1. Logical platform architecture. Worker technology depends on the backend framework decision.]
+Figure 1. Logical platform architecture. Worker technology depends on the backend framework decision.
+
+2.1 Logical components
+~~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 5]
+| Component | Responsibilities | Primary interfaces |
+| --- | --- | --- |
+| Customer web/PWA | QR context, menu, cart, order tracking, games and rewards. | HTTPS API; tenant-scoped realtime channel. |
+| Staff web application | Reception, kitchen, waiter and manager experiences. | Authenticated HTTPS API; role/branch-scoped realtime. |
+| Owner web application | Tenant configuration, menu, offers, team, integrations, subscriptions and reporting. | Authenticated HTTPS API; tenant-scoped controls. |
+| Super Admin web application | Tenant onboarding, domain/plan administration, platform health and audited support actions. | Platform-admin API and stronger authentication. |
+| Backend modular monolith | Business rules, validation, authorization, transactional workflows and provider orchestration. | REST API; optional WebSocket gateway when required. |
+| Supabase PostgreSQL | Transactional data, constraints, indexes and tenant-related policies. | SQL connection or Supabase Data API through approved access path. |
+| Supabase Auth | Identity lifecycle, sessions and JWT issuance. | Auth SDK/API; backend JWT verification. |
+| Supabase Realtime | Private broadcast/presence for order and game updates. | Realtime channels with authorization and scoped tokens/policies. |
+| Supabase Storage | Menu images, logos, QR exports, content images and permitted attachments. | Signed URLs/storage policies. |
+| Worker service | Outbox publishing, notification delivery, scheduled tasks, subscription reconciliation and connector sync. | Durable queue; database; external provider adapters. |
+
+2.2 Modular monolith boundaries
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 6]
+| platform/ / apps/ / web/ # Next.js customer, staff, owner and admin UI / api/ # Backend modular monolith (NestJS OR FastAPI) / worker/ # Async jobs; may initially be same codebase/process image / packages/ / contracts/ # OpenAPI-generated/shared API contracts / ui/ # Shared UI components / config/ # Lint, formatting and TypeScript config where applicable / supabase/ / migrations/ # Authoritative SQL migration history / seed/ # Local development and test fixtures / infrastructure/ / docker/ # Local containers / deployment/ # IaC and environment configuration / Backend domain modules (logical boundaries): / identity, tenants, locations, staff, authorization, / menu, tables, table-sessions, orders, kitchen, / restaurant-billing, restaurant-payments, offers, / games, rewards, customer-crm, subscriptions, / platform-payments, integrations, inventory, / notifications, audit, analytics |
+
+Modules may call other modules through exported application services or domain events. Avoid direct cross-module table writes. Critical multi-module operations should use a clearly owned application service and one database transaction where possible.
+
+3. TECHNOLOGY STACK OPTIONS AND PROVISIONAL BASELINE
+----------------------------------------------------
+
+The database choice is fixed as Supabase PostgreSQL. The remaining stack is selected by operational fit, team capability and maintainability. The table below records a preferred baseline while preserving two valid backend choices.
+
+[TABLE 7]
+| Layer | Preferred baseline | Python implementation profile | Notes |
+| --- | --- | --- | --- |
+| Frontend | Next.js + React + TypeScript | Same | Role-specific route groups; mobile-first customer experience; shared UI package. |
+| Styling / UI | Tailwind CSS + shadcn/ui + Radix | Same | Reusable accessible components; tenant theming via controlled tokens. |
+| Backend | NestJS + TypeScript | FastAPI + Python | Choose one after team review/POC; keep REST contracts framework-neutral. |
+| Validation | DTO validation / Zod at boundaries | Pydantic models | Validation at API boundary and domain invariants in services. |
+| Database access | Drizzle + PostgreSQL SQL | SQLAlchemy 2.x + Alembic | Supabase SQL migrations remain authoritative; avoid competing migration histories. |
+| Authentication | Supabase Auth | Supabase Auth | Backend validates JWT and resolves membership/permissions. |
+| Realtime | Supabase Realtime | Supabase Realtime | Use private channels and persisted state; dedicated game gateway may come later. |
+| Queue | BullMQ + Redis | Celery + Redis | Queue selected to match backend language; durable retries and idempotent jobs. |
+| Storage | Supabase Storage | Same | Use bucket policies and signed URLs for protected assets. |
+| Testing | Jest/Vitest + Playwright | Pytest/HTTPX + Playwright | Contract, integration, tenant isolation and browser E2E tests. |
+| Deployment | Vercel frontend + managed backend runtime/AWS | Same hosting model | Dockerize backend and workers; exact cloud topology depends on security/cost review. |
+| Monorepo | pnpm + Turborepo | pnpm + Turborepo for JS apps; Python packaging for API | Keep deployable applications independently buildable. |
+
+3.1 Backend selection criteria
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 8]
+| Criterion | NestJS profile | FastAPI profile |
+| --- | --- | --- |
+| Team familiarity | Best if team is strongest in TypeScript/Node. | Best if team is strongest in Python. |
+| Architecture | Opinionated module/DI/guard conventions out of the box. | Flexible routers/dependencies; team defines module/service conventions. |
+| Frontend contract | Shared TypeScript types can be easier; still generate/share API contracts. | Generate TypeScript clients from OpenAPI to avoid manual type drift. |
+| Background jobs | BullMQ + Redis. | Celery + Redis. |
+| Realtime | Nest gateways / Socket.IO available; Supabase Realtime can handle initial order use cases. | FastAPI WebSockets available; Supabase Realtime can handle initial order use cases. |
+| Data/ML ecosystem | Node backend with Python service later if needed. | Direct access to Python analytics/ML ecosystem. |
+| Decision rule | Choose if team ownership and TypeScript operations are stronger. | Choose if Python skills and future data workload materially benefit the team. |
+
+[TABLE 9]
+| Required proof of concept / Before backend freeze, implement the same three slices in both candidate frameworks: (1) transactional order creation with idempotency, (2) authorized order-status update and realtime notification, and (3) durable integration job with retries. Compare testability, tenant security, developer workflow, deployment and operating cost. |
+
+4. MULTI-TENANCY, DOMAINS AND IDENTITY
+--------------------------------------
+
+4.1 Tenant hierarchy
+~~~~~~~~~~~~~~~~~~~~
+[IMAGE OMITTED IN TEXT VERSION: Figure 2. Tenant and branch ownership model.]
+Figure 2. Tenant and branch ownership model.
+Tenant represents a restaurant business or chain. Location represents a branch/outlet. Shared tenant data includes memberships, roles, menu, offers, subscription and branding; branch data includes tables, orders, staff assignments, local payment settings and inventory.
+
+4.2 Tenant resolution
+~~~~~~~~~~~~~~~~~~~~~
+- Platform subdomain pattern: {tenant-slug}.platform-domain.example. The hostname is resolved against an active tenant_domains record.
+- Customer route pattern may include an explicit restaurant slug and table QR token. The server cross-checks both; it must not trust an arbitrary tenant_id supplied by the browser.
+- Custom domains are optional. Owner/Super Admin initiates domain claim; platform verifies DNS ownership (TXT or CNAME challenge), validates host mapping and provisions SSL through the selected edge/hosting provider.
+- No restaurant IP address is required for tenant onboarding or routing. IP allowlisting may be an optional enterprise security feature only if a real use case exists.
+- Domain mapping changes are audited and cached mappings have invalidation rules.
+
+4.3 Tenant context model
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 10]
+| TenantContext = { / tenant_id: UUID, / location_id: UUID | null, / actor_type: PLATFORM_ADMIN | TENANT_USER | CUSTOMER_GUEST, / actor_id: UUID | null, / membership_id: UUID | null, / role_ids: UUID[], / permission_keys: string[], / request_id: string, / auth_source: string / } |
+
+TenantContext is derived by trusted backend middleware from a verified identity/session and resolved tenant/branch. A request body or URL parameter alone must never grant tenant scope.
+
+4.4 Table QR design
+~~~~~~~~~~~~~~~~~~~
+- QR encodes a public URL with a high-entropy, non-sequential token or token reference; do not expose numeric database IDs.
+- Store token hash or an equivalent protected representation where feasible; support revoke/rotate and audit.
+- Resolve token to tenant, location and table on the server. Validate table is active and branch is accepting orders.
+- QR is a table locator, not user authentication. Customer operations receive a short-lived guest/table session capability with restricted access.
+- Rate-limit QR resolution and order submission. Provide operational mitigations for a copied QR (table session controls, staff confirmation or configurable order acceptance rules).
+
+5. AUTHORIZATION AND SECURITY ARCHITECTURE
+------------------------------------------
+
+5.1 Identity and session
+~~~~~~~~~~~~~~~~~~~~~~~~
+- Supabase Auth is the proposed identity provider for owner/staff users. Customer guest sessions may be platform-issued, short-lived and limited to the active table/order context.
+- Backend validates access token signature, issuer, audience, expiry and expected claims before using identity context.
+- Membership, role and branch permissions are resolved server-side. Do not treat user-editable profile metadata as authorization truth.
+- Require MFA for Super Admin and strongly recommend it for tenant owners. Support session revocation and staff offboarding.
+- Use secure, HttpOnly, SameSite cookies or a well-reviewed token storage pattern for browser sessions; avoid long-lived sensitive tokens in localStorage.
+
+5.2 RBAC model
+~~~~~~~~~~~~~~
+
+[TABLE 11]
+| users / profiles / └── tenant_memberships (user_id, tenant_id, status) / ├── membership_roles (membership_id, role_id) / └── location_memberships (membership_id, location_id) / roles (tenant_id nullable for platform/default roles) / └── role_permissions (role_id, permission_id) / permissions (stable key, description, module) / Authorization decision = / authenticated actor / + active membership / + tenant match / + branch scope (when required) / + permission key / + resource-level rules |
+
+[TABLE 12]
+| Permission family | Example keys |
+| --- | --- |
+| Orders | orders.view, orders.create, orders.accept, orders.update_status, orders.cancel |
+| Kitchen | kitchen.view, kitchen.set_eta, kitchen.mark_ready |
+| Billing | billing.view, billing.create, billing.void, billing.verify_payment |
+| Menu / offers | menu.view, menu.update, offers.manage, offers.publish |
+| Staff | staff.view, staff.invite, staff.assign_roles, staff.deactivate |
+| Subscriptions | subscription.view, subscription.change_plan, subscription.manage_billing |
+| Integrations / inventory | integrations.manage, integrations.sync, inventory.view, inventory.adjust |
+
+5.3 Supabase RLS and backend access
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 13]
+| Critical implementation rule / Never expose the Supabase service-role key in the browser. Service-role/privileged server credentials bypass normal RLS protections; if used by a backend, the backend must enforce authorization and tenant scope on every query. Prefer user-scoped access/RLS for client-visible data and least-privilege database roles for server data access. |
+
+- Enable RLS on all tables exposed through Supabase APIs or reachable by non-owner roles.
+- Policies must check active membership and matching tenant/location context; use helper functions only when they are security-reviewed and indexed appropriately.
+- If backend uses a privileged database connection, centralize tenant scoping in repositories/query builders and add negative cross-tenant tests; RLS must not be assumed to protect a role that bypasses it.
+- Limit browser-side direct database access to narrowly scoped public menu reads or approved realtime subscriptions. All critical writes go through backend application services.
+- Realtime private channel authorization must check tenant/branch/order ownership. A customer must not subscribe to all tenant order events.
+
+5.4 Security baseline
+~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 14]
+| Control | Requirement |
+| --- | --- |
+| Transport | TLS for all external endpoints; HSTS where supported. |
+| Secrets | Store provider keys and database credentials in a secret manager/environment vault; rotate and audit access. |
+| Input validation | Validate and normalize all API payloads; apply size and content limits to notes, files and uploads. |
+| Output safety | Escape user-generated content; sanitize rich text if ever supported; apply CSP and secure headers. |
+| Rate limits | Apply per-IP, tenant, user and operation limits to QR resolution, order creation, login, games and webhooks. |
+| Audit | Record privileged role changes, order cancellations, bill adjustments, payment verification, domain changes, subscription changes and Super Admin support access. |
+| File uploads | Allowlisted MIME types, size caps, image processing, malware scanning where appropriate, signed URLs and storage policies. |
+| Payment webhooks | Verify provider signature, timestamp/replay constraints, event identity and idempotency before processing. |
+| Privacy | Collect minimum diner data; define consent, retention, access and deletion processes for applicable jurisdictions. |
+| Dependency security | Automated dependency scanning, lockfiles, secret scanning and patch policy. |
+
+6. CORE WORKFLOW AND STATE MACHINES
+-----------------------------------
+
+6.1 Order creation transaction
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+[IMAGE OMITTED IN TEXT VERSION: Figure 3. Order-to-service sequence (logical; realtime event delivery is asynchronous).]
+Figure 3. Order-to-service sequence (logical; realtime event delivery is asynchronous).
+
+[TABLE 15]
+| BEGIN TRANSACTION / 1. Resolve and validate tenant + branch + table session. / 2. Validate idempotency key for actor/session. / 3. Load authoritative menu item and modifier prices. / 4. Verify item availability and offer eligibility. / 5. Calculate subtotal, taxes, discounts and total in minor units. / 6. Insert order header and immutable order-item price snapshots. / 7. Insert initial order_status_event. / 8. Insert notification_outbox event (ORDER_PLACED). / COMMIT / After commit: / - worker publishes authorized realtime notification; / - staff/customer clients fetch current order state; / - failed event delivery is retried without creating another order. |
+
+Order creation must be atomic: no order header without its items, and no notification event that describes a transaction which later rolled back. Unique idempotency constraints prevent duplicate order creation from browser retries.
+
+6.2 Order state machine
+~~~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 16]
+| Current state | Allowed next states | Actor / rule |
+| --- | --- | --- |
+| PLACED | ACCEPTED, REJECTED, CANCELLED | Kitchen/authorized staff accept or reject; cancellation subject to policy. |
+| ACCEPTED | PREPARING, CANCELLED | Kitchen begins preparation; cancellation requires permission/reason. |
+| PREPARING | READY, CANCELLED | Kitchen marks ready; cancellation is controlled and audited. |
+| READY | SERVED, CANCELLED (exception) | Waiter/service team marks served; exception requires manager permission. |
+| SERVED | COMPLETED | Reception/system completes after bill/service policy is satisfied. |
+| REJECTED / CANCELLED / COMPLETED | No normal transitions | Terminal states; reversal requires explicit corrective workflow and audit. |
+
+6.3 Independent payment state machine
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 17]
+| State | Meaning | Transition control |
+| --- | --- | --- |
+| UNPAID | Bill exists; no verified payment recorded. | Initial state. |
+| PAYMENT_REPORTED | Customer or staff has entered a transaction reference; not verified. | Optional; never treated as paid automatically. |
+| VERIFIED_PAID | Authorized staff confirms receipt using restaurant’s external UPI/bank channel. | Permission + audit + verifier timestamp. |
+| PARTIALLY_PAID | Some amount has been verified but balance remains. | Future capability; requires payment allocation rules. |
+| VOIDED / REFUNDED | Bill/payment reversed under authorized workflow. | Manager/finance policy; reason and external reference required. |
+
+6.4 Table session model
+~~~~~~~~~~~~~~~~~~~~~~~
+Proposed behavior: a table session groups orders for one table visit. Each customer submission creates an independent order/KOT, linked to the current session. A table bill can aggregate eligible orders. To prevent cross-customer draft interference, draft carts are private to their browser session unless a future explicit shared-cart feature is enabled.
+- Session status: OPEN, CLOSING, CLOSED.
+- A session opens by configured rule (staff opens it or first valid order creates it).
+- Only one current OPEN session per table should exist unless business policy explicitly permits overlap.
+- A session closes only after active orders and bill/payment conditions meet configured rules.
+- Reopening a closed session requires authorized staff and audit logging.
+
+7. DATA MODEL AND DATABASE REQUIREMENTS
+---------------------------------------
+
+7.1 Entity relationship overview
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 18]
+| TENANT / ├── LOCATIONS / │ ├── TABLES ── QR_TOKENS / │ ├── TABLE_SESSIONS ── ORDERS ── ORDER_ITEMS / │ │ └── ORDER_STATUS_EVENTS / │ ├── RESTAURANT_PAYMENT_SETTINGS / │ ├── RESTAURANT_BILLS ── BILL_ORDERS / │ │ └── RESTAURANT_PAYMENTS / │ └── STAFF_LOCATION_ASSIGNMENTS / ├── TENANT_MEMBERSHIPS ── MEMBERSHIP_ROLES ── ROLES ── ROLE_PERMISSIONS / ├── MENUS ── MENU_CATEGORIES ── MENU_ITEMS ── MODIFIERS / ├── OFFERS ── OFFER_REDEMPTIONS / ├── GAMES ── GAME_SESSIONS ── GAME_PARTICIPANTS / RESULTS / ├── REWARDS ── REWARD_REDEMPTIONS / ├── SUBSCRIPTIONS ── SUBSCRIPTION_INVOICES ── SUBSCRIPTION_PAYMENTS / ├── INTEGRATIONS ── SYNC_JOBS / SYNC_LOGS / EXTERNAL_ID_MAPPINGS / └── CONTENT_PAGES / CONTENT_BLOCKS / AUDIT_LOGS / PLATFORM SCOPE / ├── PLATFORM_ADMINS / ├── PLANS ── PLAN_FEATURES / ├── TENANT_DOMAINS / └── PAYMENT_GATEWAY_EVENTS (company SaaS gateway only) |
+
+7.2 Core table catalogue
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 19]
+| Domain | Core tables / key fields | Notes |
+| --- | --- | --- |
+| Platform / tenant | tenants(id, slug, name, status, created_at); tenant_domains(id, tenant_id, hostname, verification_status, is_primary); locations(id, tenant_id, name, timezone, address, service_mode, status). | Tenant is the business/chain; location is branch. |
+| Identity / access | profiles; tenant_memberships(user_id, tenant_id, status); location_memberships; roles; permissions; role_permissions; membership_roles. | Membership and branch scope are separate from global Auth identity. |
+| Tables / QR | restaurant_tables(id, tenant_id, location_id, table_code, label, status); qr_tokens(id, table_id, token_hash, status, rotated_at); table_sessions(id, tenant_id, location_id, table_id, status, opened_at, closed_at). | QR token is non-sequential and revocable. |
+| Menu | menus; menu_categories; menu_items; item_variants; modifier_groups; modifiers; item_availability. | Menu prices are authoritative server-side; branch overrides may be needed. |
+| Orders | orders(id, tenant_id, location_id, table_session_id, order_number, status, currency, subtotal_minor, tax_minor, discount_minor, total_minor, idempotency_key, source_channel, fulfilment_type, external_order_ref). | Persist item name, SKU, modifier and price snapshots for historical accuracy. Dine-in table_session_id is nullable for delivery orders; source_channel distinguishes QR_DINE_IN from external marketplace channels. |
+| Restaurant billing | restaurant_bills; bill_orders; bill_lines; restaurant_payment_settings; restaurant_payments. | Separate from SaaS subscription billing; payment method includes RESTAURANT_UPI_QR/CASH/OTHER if enabled. |
+| Offers / rewards | offers; offer_conditions; offer_redemptions; rewards; reward_rules; reward_redemptions. | Eligibility and quota enforced transactionally. |
+| Games | games; game_sessions; game_participants; game_events/results. | Keep session data tenant-scoped and server-validated. |
+| Subscriptions | plans; plan_features; subscriptions; subscription_items/entitlements; subscription_invoices; subscription_payments; payment_gateway_events. | Company gateway events only; do not mix restaurant bill records. |
+| Integrations | integration_providers; tenant_integrations; encrypted_credentials_ref; external_id_mappings; sync_runs; sync_logs; imported_attendance_records. | Credentials stored securely; raw source records retained only per policy. |
+| External food orders | external_channel_connections; external_channel_outlets; external_order_mappings; external_order_events; external_menu_item_mappings; external_webhook_inbox; integration_delivery_attempts. | Provider-specific IDs and payloads are mapped to canonical internal orders; unique provider/event constraints prevent duplicate ingestion. |
+| Content builder | tenant_sites; site_pages; content_blocks; content_versions; published_versions. | Block type and JSON schema are allowlisted. |
+| Platform reliability | notification_outbox; notifications; audit_logs; idempotency_records; webhook_events. | Use retention and indexing policies. |
+| Inventory (later) | inventory_items; suppliers; stock_movements; recipes; purchase_orders. | Branch-scoped stock ledger; do not update stock without movement history. |
+
+7.3 Database conventions
+~~~~~~~~~~~~~~~~~~~~~~~~
+- Use UUID primary keys; public URLs and QR tokens must not expose sequential database identifiers.
+- Every tenant-owned table carries tenant_id. Every branch-scoped table also carries location_id where applicable.
+- Use composite foreign keys or equivalent constraints where practical to ensure a child row cannot reference a parent from a different tenant.
+- Money is stored as integer minor units (for example, paise) plus ISO currency code; do not use floating-point for monetary calculations.
+- Store timestamps in UTC (timestamptz); display according to location timezone.
+- Persist immutable price, tax, modifier and discount snapshots on order/bill records to preserve historical calculations.
+- Use check constraints and explicit state transition services for valid statuses.
+- Add indexes for tenant_id, location_id, created_at, status, table_id, order_number and frequently queried foreign keys.
+- Define unique constraints for tenant slug, active domain hostname, table code within branch, idempotency keys within scope and external provider event IDs.
+- Schema changes are managed through versioned SQL migrations; production data migrations are backward-compatible where possible.
+
+7.4 Important constraints and transaction boundaries
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 20]
+| Operation | Transaction / constraint requirement |
+| --- | --- |
+| Create order | Insert order, order items, initial status event and outbox event atomically; idempotency key unique within tenant/session scope. |
+| Apply offer | Lock or atomically increment redemption counter; enforce usage caps and validity during the same transaction. |
+| Verify restaurant payment | Update bill/payment status, verifier, timestamp and audit event atomically. |
+| Redeem reward | Check reward eligibility, expiry, quota and prior redemption; write redemption atomically. |
+| SaaS subscription activation | Persist verified gateway event and update subscription/entitlement idempotently. |
+| Inventory adjustment | Write stock movement ledger entry; derived on-hand quantity must reconcile with ledger. |
+
+8. API DESIGN AND ENDPOINT CATALOGUE
+------------------------------------
+
+8.1 API conventions
+~~~~~~~~~~~~~~~~~~~
+- Version prefix: /api/v1 or /v1; choose one convention and apply consistently.
+- JSON request/response bodies; ISO-8601 UTC timestamps; money values in minor units with currency.
+- Use consistent error format: code, message, request_id and optional field errors. Do not leak stack traces or secrets.
+- Pagination: cursor-based for high-volume order/event lists; stable sorting by created_at and id.
+- Require Idempotency-Key for order creation, subscription checkout creation and other retry-sensitive mutations.
+- Use If-Match/version fields or equivalent optimistic concurrency for owner content updates where lost updates are possible.
+- OpenAPI contract is the source for generated client types and API documentation.
+- All authenticated endpoints derive tenant/branch scope from verified context, not from arbitrary client-supplied tenant_id.
+
+8.2 Representative endpoints
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 21]
+| Area | Method + path | Purpose / authorization |
+| --- | --- | --- |
+| Public menu | GET /v1/public/tenants/{slug}/menu | Read published public menu and active offers; resolve valid table token where required. |
+| QR / session | POST /v1/public/table-sessions/resolve | Resolve QR token and create/return limited guest table context. |
+| Customer order | POST /v1/customer/orders | Create order; guest capability or authenticated customer; idempotency required. |
+| Customer order | GET /v1/customer/orders/{orderId} | Read only the order/session associated with the guest capability or account. |
+| Customer status | GET /v1/customer/table-sessions/{sessionId}/summary | Read permitted table-session status and bill summary. |
+| Staff queue | GET /v1/staff/locations/{locationId}/orders | Read authorized location orders, filters and pagination. |
+| Kitchen action | POST /v1/staff/orders/{orderId}/accept | Kitchen permission; valid transition. |
+| Kitchen action | PATCH /v1/staff/orders/{orderId}/status | Update status; transition and actor scope validated. |
+| Kitchen ETA | PUT /v1/staff/orders/{orderId}/eta | Chef/authorized staff sets ETA and reason. |
+| Waiter action | POST /v1/staff/orders/{orderId}/served | Waiter/manager marks service complete. |
+| Restaurant bill | POST /v1/staff/table-sessions/{sessionId}/bills | Create/recalculate bill from eligible orders. |
+| Restaurant payment | POST /v1/staff/bills/{billId}/payments | Record payment information; no company gateway call. |
+| Payment verify | POST /v1/staff/payments/{paymentId}/verify | Reception/manager verifies restaurant payment and records audit. |
+| Owner menu | POST/PATCH /v1/owner/menu/items | Create/update menu items and pricing; owner permission. |
+| Owner offers | POST/PATCH /v1/owner/offers/{offerId} | Create/update/activate offers; owner permission. |
+| Owner staff | POST /v1/owner/staff/invitations | Invite employee and assign permitted roles/branches. |
+| Platform tenant | POST /v1/platform/tenants | Super Admin creates tenant and initial branch. |
+| Platform domain | POST /v1/platform/tenants/{tenantId}/domains | Create domain claim/verification workflow. |
+| SaaS subscription | POST /v1/owner/subscriptions/checkout | Create checkout with company gateway for a SaaS plan. |
+| Gateway webhook | POST /v1/webhooks/subscription-payments/{provider} | Verify signature and process idempotent company gateway events. |
+| Integrations | POST /v1/owner/integrations/{provider}/connect | Create provider connection; encrypted credentials reference. |
+| Integrations | POST /v1/owner/integrations/{provider}/sync | Trigger authorized sync job; return job ID/status. |
+| External orders | GET /v1/staff/locations/{locationId}/external-orders | List external marketplace orders and acknowledgement deadlines; branch-scoped permission. |
+| External order action | POST /v1/staff/external-orders/{orderId}/accept | Accept external order; idempotency required; dispatch mapped action to source provider. |
+| External order action | POST /v1/staff/external-orders/{orderId}/reject | Reject external order with provider-supported reason; idempotency and audit required. |
+| External order action | PATCH /v1/staff/external-orders/{orderId}/status | Update canonical preparation status and enqueue supported provider status update. |
+| Owner integration | GET /v1/owner/integrations/food-delivery | View configured providers, outlet mappings and connection health. |
+| Owner integration | POST /v1/owner/integrations/food-delivery/{provider}/connect | Start provider/aggregator connection or authorization workflow. |
+| Owner integration | PUT /v1/owner/integrations/food-delivery/outlets/{outletId}/mapping | Map provider outlet to tenant branch; owner/platform authorization and audit. |
+| Provider webhook | POST /v1/webhooks/food-delivery/{provider}/orders | Receive provider order/event webhook; signature validation and durable inbox. |
+| Provider webhook | POST /v1/webhooks/food-delivery/{provider}/status | Receive provider cancellation, timeout, rider or status events where supported. |
+| Content builder | PUT /v1/owner/site/pages/{pageId}/draft | Save validated page/block configuration. |
+| Content builder | POST /v1/owner/site/pages/{pageId}/publish | Publish validated version; audit and cache invalidation. |
+
+8.3 Standard response examples
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 22]
+| Success (order created): / { / "data": { / "order_id": "<uuid>", / "order_number": "A-1042", / "status": "PLACED", / "currency": "INR", / "total_minor": 42500, / "created_at": "2026-11-12T08:30:00Z" / }, / "request_id": "<request-id>" / } / Error: / { / "error": { / "code": "ITEM_UNAVAILABLE", / "message": "One or more selected items are unavailable.", / "fields": [{"field": "items[0].item_id", "reason": "unavailable"}] / }, / "request_id": "<request-id>" / } |
+
+9. REALTIME EVENTS AND DELIVERY RELIABILITY
+-------------------------------------------
+
+9.1 Initial approach
+~~~~~~~~~~~~~~~~~~~~
+Use Supabase Realtime Broadcast/private channels for initial order and operational updates. Use Presence only for lightweight participant/online state in game rooms. Do not use Realtime Postgres Changes as the only durable workflow mechanism. For higher-frequency game logic, evaluate a dedicated WebSocket service (for example Socket.IO) as a later component.
+
+[TABLE 23]
+| Event | Publisher | Authorized recipients | Payload minimum |
+| --- | --- | --- | --- |
+| ORDER_PLACED | Backend after DB commit | Kitchen and reception for the same tenant/location; customer order channel. | event_id, order_id, order_number, location_id, created_at. |
+| ORDER_ACCEPTED | Backend | Customer order channel; reception; authorized kitchen/staff. | order_id, status, actor_display, occurred_at. |
+| ETA_UPDATED | Backend | Customer order channel and permitted staff. | order_id, eta_minutes or estimated_ready_at, occurred_at. |
+| ORDER_PREPARING | Backend | Customer and permitted staff channels. | order_id, status, occurred_at. |
+| ORDER_READY | Backend | Waiter branch/section channel and customer order channel for self-service. | order_id, table_label, service_mode, occurred_at. |
+| ORDER_SERVED | Backend | Customer order channel and reception. | order_id, status, occurred_at. |
+| OFFER_PUBLISHED | Backend | Public tenant/branch content refresh channel. | tenant_id, location_id, offer_version. |
+| GAME_ROOM_EVENT | Game service | Only authorized participants in the exact room. | room_id, event_type, sequence, minimal event payload. |
+
+9.2 Outbox and retry model
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+- Write notification_outbox in the same DB transaction as the business change.
+- Worker claims pending events with a lease/lock strategy and publishes to Realtime or external notification providers.
+- Store attempt count, next_attempt_at, last_error, published_at and event_id.
+- Use exponential backoff with bounded retry and a dead-letter/manual-replay process.
+- Consumers tolerate duplicate delivery by event_id and fetch authoritative state from the API.
+- A reconnecting client requests current order/session state and can use a last-seen event cursor where event history is exposed.
+
+10. PAYMENT ARCHITECTURE
+------------------------
+
+[TABLE 24]
+| Non-negotiable separation / There are two unrelated payment domains. (A) Diner pays restaurant directly using the restaurant’s own UPI QR/payment channel; the SaaS platform records and staff verifies this payment. (B) Restaurant pays the SaaS company for a subscription through the company’s payment gateway. No diner food-order payment is routed through the company gateway. |
+
+10.1 Flow A - diner to restaurant
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 25]
+| Customer -> Restaurant bill screen -> Restaurant's own UPI QR / -> Customer pays in their UPI app directly to restaurant / -> Customer may enter a transaction reference (optional) / -> Reception checks the restaurant's UPI/bank app / -> Authorized staff verifies payment in SaaS dashboard / -> Restaurant payment record becomes VERIFIED_PAID / No SaaS-company payment gateway call occurs in this flow. |
+
+[TABLE 26]
+| Record | Required information |
+| --- | --- |
+| restaurant_payment_settings | tenant_id, location_id, qr_asset_id or protected asset reference, upi_id/display_name (optional), active status, updated_by. |
+| restaurant_bills | tenant_id, location_id, table_session_id, currency, subtotal/tax/discount/total minor units, status, created_by. |
+| restaurant_payments | bill_id, amount_minor, method, status, customer_reference (unverified), verified_by, verified_at, notes/audit reference. |
+
+Static UPI QR does not give the SaaS platform a reliable confirmation signal by itself. A customer-entered UPI reference is not proof of settlement. V1 therefore requires authorized staff verification against the restaurant’s own banking/UPI channel. Automatic verification is a later provider-specific integration and is not assumed.
+
+10.2 Flow B - restaurant to SaaS company
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 27]
+| Owner -> Select SaaS plan -> Backend creates checkout session / -> Company payment gateway checkout / -> Gateway sends signed webhook / -> Backend verifies signature + event identity / -> Persist gateway event idempotently / -> Update subscription / invoice / entitlements / -> Notify owner and update tenant feature access |
+
+[TABLE 28]
+| Record | Required information |
+| --- | --- |
+| plans / plan_features | Plan code, price, currency, billing interval, feature key, limits, effective dates. |
+| subscriptions | tenant_id, plan_id, status, billing period, start/end dates, grace period, cancellation state. |
+| subscription_invoices | tenant_id, subscription_id, invoice number, amount, currency, tax, status, due/paid dates. |
+| subscription_payments | invoice_id, provider, provider_order/payment reference, amount, currency, status, paid_at. |
+| payment_gateway_events | provider_event_id unique, event type, signature verification result, payload reference/hash, processed_at, processing status. |
+
+- Provider integration must sit behind a payment-gateway adapter so the company can change provider without redesigning subscription domain logic.
+- Verify webhook signatures and replay protections using provider documentation; process the same provider event at most once.
+- Never activate paid entitlements solely from a browser redirect/success page; wait for verified server-side gateway confirmation.
+- Define failed renewal, grace period, cancellation, refund, tax invoice and plan downgrade behavior before production launch.
+- Gateway secrets and webhook signing secrets are server-side only.
+
+11. BACKGROUND JOBS AND INTEGRATIONS
+------------------------------------
+
+11.1 Background job classes
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 29]
+| Job type | Examples | Reliability requirements |
+| --- | --- | --- |
+| Transactional outbox | Realtime event publish, notification dispatch. | Durable, retryable, event-idempotent. |
+| Scheduled | Offer activation/deactivation, subscription expiry reminders, scheduled reports. | Timezone-aware, duplicate-safe, observable. |
+| Subscription | Gateway reconciliation, renewal status processing. | Signed event verification, idempotency, audit, reconciliation. |
+| Integration sync | Attendance/POS/inventory import and normalization. | Cursor/checkpoint, retry, rate-limit awareness, source mapping. |
+| External order ingestion | Validate and normalize food-marketplace webhooks; create canonical external orders. | Durable inbox, signature verification, deduplication, tenant/outlet mapping and bounded retries. |
+| External order status dispatch | Send accept/reject/ready/picked-up/status changes to marketplace or authorized aggregator. | Provider-specific deadlines, idempotency, reconciliation, retry/dead-letter and visible failure state. |
+| Media processing | Image resize/optimization and QR PDF generation. | Bounded file size/type, retry, status reporting. |
+| Analytics aggregates | Daily/weekly branch summaries and dashboard materialization. | Rebuildable from source events; tenant-scoped. |
+
+11.2 Integration hub design
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 30]
+| Integration Adapter contract (logical): / connect(tenant, location, credential_reference) / validate_connection() / fetch_changes(cursor, window) / normalize(source_payload) -> canonical_records / upsert_external_id_mapping() / persist_sync_checkpoint() / report_health_and_errors() / Canonical examples: / AttendanceRecord: employee_ref, shift_date, clock_in, clock_out, / break_minutes, source, source_record_id / ExternalOrderRef: provider, external_id, internal_id, last_synced_at |
+
+- Supported connection methods: provider REST API, signed webhook, scheduled pull, CSV/XLSX import and manual data correction.
+- Build connectors only after receiving provider API documentation, sandbox credentials or representative export samples.
+- Map external employee IDs to internal staff records; unresolved mappings go to a review queue, not silent data loss.
+- Preserve raw source references and sync logs according to retention policy so support can diagnose mismatches.
+- Encrypt credentials using a managed secret/KMS approach; store references and metadata in the database, not plaintext secrets.
+- Do not scrape web portals or collect a provider server IP as a substitute for an official integration contract.
+
+11.4 External food-delivery order integrations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The external food-order module shall be implemented as a provider-independent adapter boundary within the integration hub for marketplaces such as Zomato and Swiggy, subject to the relevant provider approval and connector route. The platform must not couple core order processing to one marketplace's payload, status names or authentication model. Direct marketplace integrations may be used only after the company has secured the required POS/technology-partner approval, credentials, outlet mapping and certification. An authorized aggregation middleware may be used where it provides a contracted and technically supported route to multiple marketplaces.
+
+Logical inbound flow:
+Marketplace / authorized aggregator -> signed webhook or provider event -> webhook inbox (durable raw event reference) -> signature/authentication validation -> provider/event deduplication -> provider adapter normalization -> canonical external order -> tenant/location/outlet mapping -> transactional order + items + status event + outbox -> staff External Orders queue and kitchen KOT.
+
+Logical outbound flow:
+Staff accept/reject/status action -> internal state transition + outbox -> provider-specific status mapper -> provider API/aggregator -> acknowledgement persisted -> retry/reconciliation if delivery fails.
+
+Canonical external order fields should include: tenant_id, location_id, source_channel, provider_outlet_id, external_order_id, external_order_code, fulfilment_type (DELIVERY/PICKUP/OTHER), source_created_at, acknowledgement_deadline, currency, item and modifier snapshots, item-level/order-level discounts and charges, tax/packaging/delivery charge details where supplied, provider payment/collection indicator, permitted masked customer/delivery details, special instructions, source status, internal status and raw_payload_reference. Store only the personal data required to fulfil the order and apply the approved retention policy.
+
+Technical requirements:
+- Use a unique constraint on (provider, provider_account/outlet scope, external_order_id) and on (provider, provider_event_id) where the provider supplies event IDs. If no event ID exists, use a documented deterministic deduplication key based on provider order identity and event semantics.
+- Persist inbound events before processing. Acknowledge webhooks only after durable acceptance according to the provider contract; process asynchronously through workers.
+- Validate webhook signatures, tokens, timestamps and replay windows exactly as specified by each provider. Secrets and API credentials are stored in a managed secret store; database rows hold references only.
+- Resolve provider outlet IDs to a tenant and location through an explicit, verified mapping. Never infer tenant ownership from untrusted payload fields alone.
+- Normalize provider item/modifier IDs to internal menu entities where possible, but preserve source labels and source price snapshots. An unmapped item must be visible and must not be silently substituted.
+- External orders use the shared canonical order domain but must not require a dine-in table or table session. Add explicit source_channel and fulfilment_type fields; retain provider order IDs and external status events.
+- Provider-specific acknowledgement deadlines must be stored and displayed as countdowns. Do not auto-accept or auto-reject unless the provider supports it and the restaurant explicitly configures the policy.
+- Model internal order state and external provider state separately. A mapping table/configuration converts provider statuses to canonical states; unsupported transitions are rejected and logged.
+- Accept/reject and status updates must be idempotent. Store request/response metadata, provider correlation IDs, attempt count, next_retry_at and terminal failure/dead-letter status. Do not retry non-idempotent provider actions without a safe provider idempotency mechanism or reconciliation query.
+- A provider timeout must not be interpreted as success. Query/reconcile order status where supported before repeating an ambiguous accept/reject action.
+- Route accepted external orders to the correct kitchen station with a visible marketplace label. Keep external orders out of dine-in table billing/session aggregation unless a separately approved workflow explicitly requires it.
+- Treat marketplace payment collection and restaurant settlement as separate from customer-to-restaurant UPI verification and from the company's SaaS subscription gateway. Store provider-supplied payment/settlement facts; do not mark marketplace settlement as received without a verified settlement source.
+- Menu/availability synchronization is a separate capability from order ingestion. It requires explicit item/modifier mapping, price/tax validation, publish acknowledgements and rollback/error visibility.
+- Provide connection health, webhook lag, acknowledgement latency, failed status updates, retry queue depth and last successful event per tenant/location/provider.
+- Do not scrape marketplace merchant portals, automate their UI, or ask restaurants to share marketplace passwords as an integration substitute.
+
+Suggested external integration tables (logical schema; final columns depend on provider contracts):
+
+[TABLE - External integration tables]
+| Table | Important fields / constraints |
+| --- | --- |
+| external_channel_connections | id, tenant_id, provider, status, credential_secret_ref, created_by, approved_at, last_health_check_at; unique tenant/provider/account mapping as applicable. |
+| external_channel_outlets | id, connection_id, tenant_id, location_id, provider_outlet_id, mapping_status, activated_at; unique provider outlet mapping. |
+| external_order_mappings | id, tenant_id, location_id, provider, provider_outlet_id, external_order_id, internal_order_id, provider_status, last_synced_at; unique provider/outlet/order. |
+| external_order_events | id, tenant_id, internal_order_id, provider, provider_event_id, event_type, source_status, normalized_status, occurred_at, payload_ref, processing_status. |
+| external_webhook_inbox | id, provider, provider_event_id, received_at, signature_valid, payload_ref/hash, processing_status, attempt_count; unique provider/event where available. |
+| external_menu_item_mappings | tenant_id, location_id, provider, provider_item_id, internal_menu_item_id, mapping_status, last_published_version. |
+| integration_delivery_attempts | id, tenant_id, provider, internal_order_id, action, request_ref, response_ref, status, attempt_count, next_retry_at, correlation_id. |
+
+
+11.3 Attendance and payroll scope
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Initial integration scope should import/normalize attendance records and employee mappings. Payroll calculation is a later module and requires approved salary structures, pay periods, overtime, leave, deductions, rounding, approval and jurisdiction rules. The platform should not claim statutory payroll compliance until those rules are reviewed and tested for the target market.
+
+12. GAMES, REWARDS AND CONTENT CONFIGURATION
+--------------------------------------------
+
+12.1 Games service boundary
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- Game catalogue and feature entitlement determine which games a tenant may expose.
+- Game session belongs to tenant and optionally location/table session; session participant receives a short-lived room capability.
+- Server validates session start/end, scoring rules, attempt limits and reward eligibility. Client-reported score is not authoritative.
+- Use private room channels; never broadcast a tenant-wide event containing participant identity or private game state.
+- Start with low-risk turn-based trivia/puzzles. Defer high-frequency real-time gameplay until load and abuse controls are understood.
+- Do not expose customer phone/email on leaderboards; use pseudonyms or approved display names.
+
+12.2 Reward safeguards
+~~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 31]
+| Control | Technical requirement |
+| --- | --- |
+| Eligibility | Server checks game result, customer/session eligibility, tenant/location scope and configured conditions. |
+| Limits | Per-user/day/session quotas, tenant reward inventory, expiry and branch applicability. |
+| Idempotency | Unique reward issuance key tied to game result/rule; duplicate requests return existing reward. |
+| Redemption | One-time token or record state transition; atomic decrement/reservation of available quantity. |
+| Audit | Record reward rule version, issued_by/system, reason, redeemed_by, branch and timestamps. |
+| Abuse controls | Rate limits, suspicious activity flags, cooldowns, session validation and staff override logs. |
+
+12.3 No-code content configuration
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Owner-editable pages are rendered from a strict JSON schema of allowed content blocks. A block has a type, version and validated properties. The renderer maps each allowed type to a trusted frontend component. No arbitrary scripts, HTML execution or dynamic component imports are permitted.
+
+[TABLE 32]
+| Example conceptual page config: / { / "schema_version": 1, / "blocks": [ / { "type": "hero_banner", "version": 1, / "props": { "title": "Today's special", "image_asset_id": "..." } }, / { "type": "offer_strip", "version": 1, / "props": { "offer_id": "..." } }, / { "type": "featured_items", "version": 1, / "props": { "item_ids": ["...", "..."] } } / ] / } |
+
+- Validate every block against a server-side allowlist/schema before save and publish.
+- Separate draft from published version; publish is atomic and creates an audit record.
+- Media references must point to tenant-owned storage assets; cross-tenant asset references are rejected.
+- Cache invalidation follows publish; public pages render only the current published version.
+- Provide preview in a sandboxed owner experience, not by executing user-provided code.
+
+13. DEPLOYMENT, ENVIRONMENTS AND OBSERVABILITY
+----------------------------------------------
+
+13.1 Environment separation
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+[TABLE 33]
+| Environment | Purpose | Requirements |
+| --- | --- | --- |
+| Local | Developer workstation. | Docker Compose for local dependencies; Supabase local stack or dedicated dev project; seeded synthetic tenants. |
+| Development | Shared integration environment. | Non-production data; feature branch deploys where practical; test gateway mode. |
+| Staging | Release candidate and acceptance testing. | Production-like topology; anonymized/synthetic data; verified webhook test; load/security checks. |
+| Production | Live tenant operations. | Separate credentials/project; restricted access; monitoring, backups, incident runbooks and tested rollback. |
+
+13.2 Deployment topology (provisional)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- Frontend: Next.js deployed on Vercel or equivalent edge-capable managed hosting; custom-domain routing must be validated for the selected provider.
+- Backend API: Dockerized service deployed on AWS ECS/Fargate, App Runner or another managed container runtime selected after cost/security review.
+- Worker: separate process/container from API when background volume or isolation requires it; may share source repository and domain modules.
+- Database/Auth/Realtime/Storage: Supabase project per environment; production database access locked down.
+- Queue/cache: managed Redis service; private networking and authentication enabled.
+- DNS/CDN/WAF: Cloudflare or equivalent; domain verification and SSL automation for custom domains.
+- Infrastructure configuration should be repeatable (IaC where practical); secrets are injected by deployment platform, not committed to repository.
+
+13.3 Observability
+~~~~~~~~~~~~~~~~~~
+
+[TABLE 34]
+| Signal | What to capture |
+| --- | --- |
+| Logs | Structured JSON, request_id, tenant_id (non-sensitive), location_id, actor type, endpoint, result, latency; redact tokens and PII. |
+| Metrics | Request rate/error/latency, DB pool saturation, queue lag/retries, realtime publish failures, active tenant/branch sessions. |
+| Traces | Distributed trace IDs across API, database calls, queue jobs and external provider calls. |
+| Business health | Order creation failures, stuck orders, ETA updates, payment verification lag, webhook failures and integration sync lag. |
+| Alerts | API availability/error spikes, queue dead letters, database connection saturation, backup failures, gateway webhook backlog and tenant isolation/security incidents. |
+
+14. NON-FUNCTIONAL ENGINEERING REQUIREMENTS
+-------------------------------------------
+
+[TABLE 35]
+| ID | Requirement | Verification method |
+| --- | --- | --- |
+| NFR-01 | Tenant and branch data isolation is mandatory for all tenant-owned operations. | Automated negative API/DB tests using two or more tenants and roles. |
+| NFR-02 | Core order writes are atomic and idempotent. | Concurrency tests, retry tests and database constraint tests. |
+| NFR-03 | Realtime failure cannot corrupt or lose business state. | Disconnect/reconnect tests; compare API/database state to client state. |
+| NFR-04 | All privileged and financially relevant actions are auditable. | Audit coverage tests for role, order, bill, payment, reward, domain and subscription actions. |
+| NFR-05 | Customer and staff interfaces are responsive on supported mobile/tablet/desktop sizes. | Playwright viewport tests and device QA matrix. |
+| NFR-06 | Typical read API p95 target <500 ms and write API p95 target <800 ms under agreed load. | Load tests with realistic tenant/branch distributions; exclude external provider latency. |
+| NFR-07 | In-app order event p95 target <2 seconds under agreed load. | Synthetic event-to-client measurement. |
+| NFR-08 | Initial availability target 99.5% monthly for core ordering APIs. | Production monitoring and incident reporting; target subject to hosting/Supabase plan. |
+| NFR-09 | Initial recovery targets RPO <=24h and RTO <=4h. | Restore drill and documented recovery procedure; confirm backup service/plan. |
+| NFR-10 | Money calculation avoids floating-point arithmetic. | Unit tests for rounding, tax, discounts and boundary amounts. |
+| NFR-11 | The platform supports agreed initial concurrency and tenant scale. | Load test; suggested starting scenario 100 tenants / 1,000 concurrent sessions, to be approved. |
+| NFR-12 | API contracts are versioned and documented. | OpenAPI generation and compatibility checks in CI. |
+| NFR-13 | External marketplace webhook ingestion is durable, authenticated, tenant-safe and idempotent. | Provider contract tests, replay tests, duplicate-event tests and cross-tenant negative tests. |
+| NFR-14 | External order acknowledgement and status dispatch failures are observable and recoverable within provider deadlines where feasible. | Simulated provider timeout/rate-limit tests, retry/dead-letter monitoring and reconciliation drills. |
+
+15. TESTING AND QUALITY STRATEGY
+--------------------------------
+
+[TABLE 36]
+| Test level | Coverage |
+| --- | --- |
+| Unit | Pricing/tax calculations, permission evaluation, order state transitions, offer eligibility, reward rules, subscription entitlement logic. |
+| Integration | PostgreSQL transactions, RLS/tenant scope, Supabase Auth JWT verification, storage policies, queue jobs, provider adapters and webhook verification. |
+| Contract | OpenAPI schema validation, generated client compatibility, webhook payload fixtures and external connector mappings. |
+| End-to-end | QR scan to order; kitchen acceptance and ETA; waiter service; bill generation; manual UPI verification; offer publish; tenant onboarding; subscription checkout simulation. |
+| Security | Cross-tenant access, role escalation, object-level authorization, QR abuse/rate limits, XSS/file upload, webhook replay and secret leakage. |
+| Resilience | Realtime disconnect, worker restart, retry duplication, provider timeout, database failover/connection pressure and restore drill. |
+| Performance | Order submission burst, kitchen queue fan-out, dashboard pagination, tenant domain resolution and game-room load. |
+| Accessibility / UX | Keyboard navigation, semantic labels, color contrast, mobile usability and error recovery. |
+
+15.1 Mandatory acceptance scenarios
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- Tenant A staff cannot read, mutate or subscribe to Tenant B data even when guessing IDs or changing URL/body parameters.
+- A duplicate order submission using the same idempotency key does not create a second order/KOT.
+- A customer-entered UPI reference does not mark a restaurant bill as verified paid.
+- A valid staff member can verify restaurant payment and the audit record captures actor, amount, time and bill.
+- A SaaS plan payment webhook activates the correct tenant subscription exactly once; invalid/duplicate events do not activate it again.
+- A customer disconnecting during preparation can reopen the page and see the latest persisted status and ETA.
+- A READY order reaches the correct waiter queue in table-service mode and the customer pickup notice in self-service mode.
+- An expired or unentitled game feature cannot be started through a direct API request.
+- Owner content with an unknown block type, invalid properties or cross-tenant asset ID is rejected.
+- A failed integration job retries safely and does not duplicate attendance or stock records.
+- A duplicate food-marketplace webhook cannot create a second external order or kitchen ticket.
+- A webhook with an invalid signature, replayed timestamp or unknown outlet mapping is rejected/quarantined and cannot cross tenant boundaries.
+- An authorized staff member can accept/reject a marketplace order from the staff dashboard; the connector records provider acknowledgement or a visible failure.
+- A provider timeout during accept/reject triggers reconciliation before any potentially duplicate action is retried.
+- A kitchen status update is mapped only to provider-supported statuses and does not overwrite a later cancellation/rejection event.
+- External delivery orders do not require a dine-in table session and do not enter the dine-in consolidated bill by accident.
+- Marketplace collection/settlement records are not confused with restaurant UPI verification or company SaaS subscription payments.
+
+16. BACKUP, RECOVERY AND OPERATIONAL READINESS
+----------------------------------------------
+
+- Choose Supabase project plan and backup/PITR capability based on approved RPO/RTO; document what is included and what is separately configured.
+- Back up database and essential object metadata; define storage asset backup/export approach separately from database backup.
+- Perform scheduled restore drills in a non-production environment; record restore duration and validation results.
+- Maintain database migration rollback/forward-fix procedure and release compatibility rules.
+- Create operational runbooks for stuck orders, realtime degradation, payment webhook backlog, subscription mismatch, integration outage and custom-domain failure.
+- Define incident severity, escalation path, customer communication and post-incident review process.
+- Provide tenant data export and tenant suspension/deletion lifecycle, subject to contractual and legal retention obligations.
+
+17. ARCHITECTURE DECISION REGISTER
+----------------------------------
+
+[TABLE 37]
+| ADR | Decision / question | Current proposal | Status |
+| --- | --- | --- | --- |
+| ADR-01 | Backend framework | NestJS + TypeScript OR FastAPI + Python; choose by team skill and proof of concept. | OPEN |
+| ADR-02 | Frontend topology | One Next.js application with route groups for customer, staff, owner and platform admin. | PROPOSED |
+| ADR-03 | Database access | Authoritative Supabase SQL migrations; choose Drizzle or SQLAlchemy based on backend framework. | OPEN |
+| ADR-04 | RLS strategy | Tenant/branch policies; least-privilege roles; server-side tenant enforcement; no browser service key. | MUST |
+| ADR-05 | Realtime transport | Supabase Realtime Broadcast/private channels for initial order flow; dedicated game gateway only when required. | PROPOSED |
+| ADR-06 | Background queue | BullMQ + Redis for NestJS; Celery + Redis for FastAPI. | OPEN with ADR-01 |
+| ADR-07 | Payment boundary | Restaurant UPI/customer bill payment direct to restaurant; company gateway only for SaaS subscriptions. | MUST |
+| ADR-08 | Table session | One table session groups separate customer order tickets; consolidated bill default; split billing later. | PROPOSED |
+| ADR-09 | Domain strategy | Platform subdomain at launch; custom domains after onboarding/domain verification flow. | PROPOSED |
+| ADR-10 | Deployment | Managed frontend + containerized API/worker + Supabase + managed Redis; exact cloud services after cost review. | PROPOSED |
+| ADR-11 | ORM/migrations | Single authoritative migration stream; SQL first; ORM must not create a competing schema history. | MUST |
+| ADR-12 | Initial capacity / SLO | Approve concurrency target, monthly availability and backup/recovery objectives. | OPEN |
+| ADR-13 | Food-delivery integration route | Direct marketplace POS integration where approved, or authorized aggregator middleware; select after eligibility, commercial, feature and cost review. | OPEN |
+| ADR-14 | First external food-order connector | Select first provider, pilot restaurant/outlet and supported order/status feature set. | OPEN |
+| ADR-15 | External order financial model | Define marketplace collection, COD, commission, discount, refund, charge and settlement reconciliation representation. | OPEN |
+
+18. IMPLEMENTATION CHECKLIST AND GLOSSARY
+-----------------------------------------
+
+18.1 Before development starts
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- Approve the PRD scope, phase boundaries and business rules.
+- Select NestJS or FastAPI after team capability review and a three-slice proof of concept.
+- Confirm table session/consolidated billing behavior and service-mode rules.
+- Confirm target launch market, currency, tax/invoice requirements and business payment verification process.
+- Select company subscription gateway and define renewal/failure/grace/cancellation behavior.
+- Confirm initial tenant count/concurrency and hosting budget.
+- Obtain one target attendance/POS provider API or export sample before promising integration.
+- Confirm marketplace POS-partner eligibility and approval route (direct or authorized aggregator); obtain current API/webhook specifications, sandbox credentials, outlet mapping process and certification checklist before implementation.
+- Select the first food-delivery provider and pilot branch; document acknowledgement deadlines, supported statuses, cancellation/refund behavior and order financial fields.
+- Approve external order retention/privacy rules, provider secret management, retry/reconciliation policy and operational support ownership.
+- Approve security model, RLS policies, Super Admin MFA and privileged support-access audit.
+- Define acceptance test data, two-tenant isolation test and pilot restaurant rollout plan.
+
+18.2 Glossary
+~~~~~~~~~~~~~
+
+[TABLE 38]
+| Term | Meaning |
+| --- | --- |
+| Modular monolith | One deployable backend organized into explicit business modules with controlled dependencies. |
+| Tenant | Restaurant business/chain using the SaaS platform. |
+| Location | A branch/outlet belonging to a tenant. |
+| RLS | Row-Level Security; PostgreSQL policies restrict which rows an execution context may access. |
+| RBAC | Role-Based Access Control. |
+| KOT | Kitchen Order Ticket. |
+| Outbox | Durable database record of an event awaiting asynchronous publication or processing. |
+| Idempotency key | Client/request identifier allowing safe retries without creating duplicate business actions. |
+| Entitlement | Server-side determination that a tenant can use a feature under its plan and configuration. |
+| PWA | Progressive Web App; web application that can offer installable/app-like behavior where supported. |
+| RPO / RTO | Recovery Point Objective / Recovery Time Objective. |
+| Restaurant payment | Diner-to-restaurant settlement for food/service, separate from SaaS subscription. |
+| External marketplace order | Food order placed through a third-party delivery marketplace and ingested through an approved connector. |
+| Order aggregator / middleware | Authorized intermediary that connects food-delivery marketplaces to restaurant POS/operations systems. |
+| Webhook inbox | Durable store of inbound provider events before asynchronous processing. |
+| SaaS subscription payment | Restaurant-to-platform-company payment for the SaaS service. |
+
+DOCUMENT METADATA
+-----------------
+Author metadata: Product and Engineering Team
+Subject: Product and technical specification for a multi-tenant restaurant SaaS platform
+
+HEADER / FOOTER TEXT
+--------------------
+RESTAURANT SAAS TRD  |  WORKING DRAFT
+CONFIDENTIAL - COMPANY PROJECT  |  Page  of

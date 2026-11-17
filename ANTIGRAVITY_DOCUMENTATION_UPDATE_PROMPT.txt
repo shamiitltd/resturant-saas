@@ -1,0 +1,15 @@
+ANTIGRAVITY — DOCUMENTATION AND UI DESIGN HANDOFF UPDATE
+
+First inspect the repository and report the actual paths of the PRD, TRD, workflow, AGENTS.md, ADRs and UI reference assets. Do not modify anything until you have confirmed the current tree.
+
+Apply the documentation update package as a NON-DESTRUCTIVE MERGE. Preserve the existing ui-design directory and every image in it. Do not delete, rename, overwrite, regenerate or clean any existing UI reference asset. If any path collision occurs, stop and report it; preserve the existing file.
+
+Use the updated PRD v1.1, TRD v1.1 and workflow v1.3 as the new source of truth. Add the accepted ADRs and UI handoff documents. Keep prior versioned documents in history. Do not replace old PRD/TRD files by renaming new versions over them.
+
+Approved: NestJS + TypeScript modular monolith; one Next.js app with customer/staff/owner/Super Admin route groups; table sessions group independent orders with consolidated billing default and future split-bill compatibility only. ORM (ADR-03) and background queue (ADR-06) remain OPEN. Do not infer approval of other decisions.
+
+Before coding, produce a UI asset audit listing all 113 reference numbers, actual image filenames and paths, missing assets, duplicates and uncertain mappings. Populate inventory entries only from verified files. The provided inventory marks 001–103 as pending mapping; do not fabricate names.
+
+Then produce a design implementation plan: design tokens/shared components, route shells, screen module sequence, API dependencies, role permissions, responsive QA and accessibility. Do not begin broad feature implementation until this plan is reviewed. Implement only the next explicitly approved slice.
+
+At the end report exact files added/modified, confirm the UI asset folder was preserved, and provide verification evidence. Do not claim assets were preserved without comparing the before/after file list.
