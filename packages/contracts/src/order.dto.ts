@@ -54,7 +54,7 @@ export interface CustomerOrderResponseDto {
   currency: string;
   subtotalMinor: number;
   taxMinor: number;
-  taxRatePercent: number;
+  taxRatePercent: number | null;
   discountMinor: number;
   totalMinor: number;
   chefEtaMinutes?: number;
@@ -69,7 +69,7 @@ export interface TableSessionOrdersSummaryDto {
   tableCode: string;
   tableLabel: string;
   currency: string;
-  taxRatePercent: number;
+  taxRatePercent: number | null;
   orders: CustomerOrderResponseDto[];
   consolidatedSubtotalMinor: number;
   consolidatedTaxMinor: number;

@@ -20,7 +20,7 @@ All remediations were implemented additively without modifying existing applied 
 5. **Server-Side Modifier Cardinality & Deduplication Validation (SEC-VAL-01)**: Backend now strictly validates modifier group `is_required`, `min_selection`, and `max_selection` bounds, and rejects duplicate modifier IDs.
 6. **Table Lifecycle State Enforcement (SEC-QR-02)**: QR token resolution rejects `OUT_OF_SERVICE` and `INACTIVE` tables with `ForbiddenException`.
 7. **Configurable Tenant Tax Rate (BUS-TAX-01)**: Added `tax_rate_percent` column to `tenants` (default `5.00`), updated DTO contracts, and bound calculations dynamically in integer minor units across backend, contracts, and frontend checkout.
-8. **Real PostgreSQL Integration Test Suite (TEST-MOCK-01)**: Introduced in-memory PostgreSQL testing (`pg-mem`) verifying partial unique indices, idempotency constraints, transaction rollbacks, and minor-unit tax arithmetic.
+8. **Real Native PostgreSQL Integration Test Suite (TEST-MOCK-01)**: Implemented isolated native PostgreSQL 18.6 testing (`real-postgres-integration.spec.ts`), executing all 5 migrations in order and asserting partial unique indices, concurrent session recovery, transaction rollbacks, RLS policies, direct anonymous access denial, cross-tenant isolation, and explicit tax states. Fast in-memory SQL syntax checks were preserved separately as `postgres-integration.spec.ts` (`pg-mem` emulator).
 
 ---
 
@@ -219,29 +219,45 @@ Two architectural options were evaluated:
 
 ### 9.1. Test Classification
 
-| Test Suite File | Test Type | Execution Engine | Scope Covered | Tests Passed |
+| Test Suite File | Test Classification | Execution Engine | Scope Covered | Tests Passed |
 | :--- | :--- | :--- | :--- | :--- |
-| `test/postgres-integration.spec.ts` | **Database Integration** | Real PostgreSQL (`pg-mem`) | Partial unique index, idempotency unique constraint, transaction rollback, minor-unit tax arithmetic | **4 / 4** |
-| `test/customer-ordering.spec.ts` | **Unit Tests** | NestJS Service (Mocked DB) | Order authorization, table status validation, race session recovery, modifier cardinality, dynamic taxes | **15 / 15** |
+| `test/real-postgres-integration.spec.ts` | **Actual Database Integration** | **Native PostgreSQL 18.6** | Partial unique index `uq_single_active_table_session`, race session recovery, atomic transaction rollback, catalog RLS, anonymous direct access denial on orders/sessions, cross-tenant isolation, idempotency key constraint, modifier group validation from DB, explicit tax configuration (NULL, 18%, 0%, rounding) | **13 / 13** |
+| `test/postgres-integration.spec.ts` | **In-Memory SQL Emulator Smoke** | **pg-mem Emulator** | Rapid in-memory SQL syntax and logic smoke check (partial unique index, foreign keys, transaction savepoints) | **4 / 4** |
+| `test/customer-ordering.spec.ts` | **Unit Tests** | NestJS Service (Mocked DB) | Order authorization, table status validation, race session recovery, modifier cardinality & deduplication, unconfigured/configured/zero taxes | **16 / 16** |
 | `test/auth.service.spec.ts` | **Unit Tests** | NestJS Service | Staff auth, tenant provisioning | **6 / 6** |
 | `test/tenant-context.middleware.spec.ts`| **Unit Tests** | NestJS Middleware | Tenant extraction and isolation | **4 / 4** |
 | `test/customer-session.e2e-spec.ts` | **HTTP Controller / E2E** | Supertest (Mocked DB) | Anonymous order rejection (401), invalid session (403), valid authorized query (200), QR resolution | **5 / 5** |
 | `test/isolation.e2e-spec.ts` | **HTTP Controller / E2E** | Supertest (Mocked DB) | Cross-tenant access boundaries | **4 / 4** |
 
-**Total Automated Tests:** **38 Passed, 0 Failed**.
+**Total Automated Tests:** **52 Passed, 0 Failed**.
 
-### 9.2. Real PostgreSQL Integration Test Output
+### 9.2. Real Native PostgreSQL Integration Test Output
 ```
-PASS apps/api/test/postgres-integration.spec.ts
-  Postgres Integration: Constraints, Transactions, and Tax Calculations
-    Table Session Concurrency (SEC-CONC-01)
-      √ should prevent duplicate OPEN table_sessions on the same table via uq_single_active_table_session (25 ms)
-    Order Idempotency Constraint (SEC-IDEMP-01)
-      √ should reject duplicate orders with identical idempotency_key for the same tenant (14 ms)
-    Transaction Rollback
-      √ should rollback all table insertions if any step fails in a multi-step transaction (12 ms)
-    Dynamic Tax Minor Unit Arithmetic (BUS-TAX-01)
-      √ should calculate tax in integer minor units accurately for varying tax rates (5 ms)
+PASS apps/api/test/real-postgres-integration.spec.ts (10.455 s)
+  Actual Native PostgreSQL 18.6 Integration Test Suite
+    1. Partial Unique Index & Active Table Session Concurrency (SEC-CONC-01)
+      √ enforces uq_single_active_table_session partial unique index in actual PostgreSQL (16 ms)
+      √ handles race conditions by recovering winning active session on error 23505 (4 ms)
+    2. Transaction Rollback in Actual PostgreSQL
+      √ rolls back all modifications atomically if any step in an order transaction fails (11 ms)
+    3. PostgreSQL RLS Enforcement & Denial of Direct Anonymous Access
+      √ allows anonymous role to SELECT only available menu items of ACTIVE tenants (28 ms)
+      √ DENIES direct anonymous Supabase SELECT access to table_sessions (returns 0 rows) (7 ms)
+      √ DENIES direct anonymous Supabase SELECT access to orders (returns 0 rows) (7 ms)
+    4. Cross-Tenant Isolation & Customer Order Scoping
+      √ isolates Tenant A and Tenant B menu categories strictly by tenant_id (3 ms)
+    5. Order Idempotency Constraint (SEC-IDEMP-01)
+      √ rejects duplicate order submission with same idempotency key for same tenant (3 ms)
+    6. Server-Side Modifier Validation from Actual PostgreSQL Records
+      √ validates min_selection and is_required constraints from actual modifier_groups table (3 ms)
+    7. Explicit Tax Configuration (Task 2: BUS-TAX-01 Verification Gate)
+      √ verifies that unconfigured tax (NULL) results in 0 tax minor units and total equals subtotal (2 ms)
+      √ calculates 18% tax accurately in integer minor units when explicitly configured (2 ms)
+      √ handles explicit 0.00% zero tax correctly
+      √ verifies integer rounding precision on odd minor units
+
+Test Suites: 1 passed, 1 total
+Tests:       13 passed, 13 total
 ```
 
 ---
@@ -267,7 +283,7 @@ $ turbo run build
    Finalizing page optimization ...
 
  Tasks:    4 successful, 4 total
-  Time:    1m0.381s
+  Time:    1m28.299s
 ```
 
 ### 10.1. Asset Preservation Verification
@@ -283,12 +299,14 @@ Verified that zero UI reference assets were modified or deleted:
 
 - [x] **Database Migration & Tables**: Restaurant tables, QR tokens, sessions, categories, items, modifiers, orders, items, status events, outbox.
 - [x] **Additive Migration `20261117000004_phase_c1_remediations.sql`**: Partial unique index on active table sessions, tenant tax rate column, and tenant-scoped RLS policies.
+- [x] **Additive Migration `20261117000005_phase_c1_verification_gate.sql`**: Removed universal 5% default on `tenants.tax_rate_percent`, revoked broad customer anonymous SELECT policies, and reinstated strict staff-only order/session policies.
 - [x] **Order Authorization (`SEC-AUTH-01`)**: Strict `x-session-token` authorization enforced on all customer order retrieval endpoints.
 - [x] **Session Concurrency Protection (`SEC-CONC-01`)**: Database-level partial unique index prevents concurrent duplicate active sessions.
 - [x] **Modifier Validation (`SEC-VAL-01`)**: Backend enforces modifier group min/max selection bounds and rejects duplicate modifier IDs.
 - [x] **Table State Enforcement (`SEC-QR-02`)**: Inactive or out-of-service tables are rejected during QR scan resolution.
-- [x] **Dynamic Tax Calculation (`BUS-TAX-01`)**: Tenant-configurable tax rate applied dynamically in integer minor units.
-- [x] **Real PostgreSQL Integration Tests (`TEST-MOCK-01`)**: Real SQL engine tests verifying constraints, rollbacks, and calculations.
+- [x] **Dynamic Tax Calculation (`BUS-TAX-01`)**: Removed universal 5% default; tax is explicitly configured (NULL = unconfigured = 0 tax; 18% = calculated in minor units; 0% = 0 tax).
+- [x] **Actual Native PostgreSQL Integration Tests (`TEST-MOCK-01`)**: Full test suite running against real native PostgreSQL 18.6.
+- [x] **In-Memory SQL Emulator Fast Smoke Suite**: `pg-mem` explicitly separated and labeled as an emulator.
 - [x] **Realtime WebSocket Clean-up (`SEC-RT-01`)**: Disconnected misleading direct WebSocket channel; standardized on authenticated 5-second polling.
 - [x] **ADR-06 Boundary Preserved**: Outbox write-path maintained without silently choosing a background queue provider.
 - [x] **Asset Preservation**: All 113 reference images in `docs/ui_design/` preserved untouched.
@@ -296,8 +314,82 @@ Verified that zero UI reference assets were modified or deleted:
 
 ---
 
-## 12. Conclusion & Next Steps
+## 12. Final Verification Gate — Actual PostgreSQL, Tax Configuration & RLS
 
-Phase C.1 has successfully hardened the Customer QR Menu & Ordering vertical slice. The system is structurally secure, concurrent-safe, and verifiable against real PostgreSQL constraints.
+### 12.1. Correction of pg-mem Claims vs Actual PostgreSQL Verification
+- **pg-mem Clarification**: `pg-mem` is an in-memory SQL parser/emulator. While useful for fast unit smoke tests, it cannot substitute for genuine PostgreSQL integration testing because it does not support PostgreSQL system catalogs, replication, extensions, or native RLS permission contexts.
+- **Actual PostgreSQL Integration Setup**: Configured an isolated, native PostgreSQL 18.6 instance (`test/real-postgres-integration.spec.ts`) executing official PostgreSQL binaries (`initdb.exe`, `pg_ctl.exe`, `postgres.exe`) on port 54338.
+- **Database Engine Version**: `PostgreSQL 18.6 on x86_64-windows, compiled by msvc-19.44.35228, 64-bit`.
+- **Test Command**:
+  ```bash
+  pnpm --filter @restaurant-saas/api test test/real-postgres-integration.spec.ts
+  ```
+- **Real Database Test Coverage**:
+  1. Partial unique index on `table_sessions(table_id) WHERE (status = 'OPEN')` triggered error `23505` (`uq_single_active_table_session`).
+  2. Concurrent session scan race conditions recovered the winning active session.
+  3. Transaction failure rolled back all order modifications atomically.
+  4. Anonymous catalog reads were restricted by PostgreSQL RLS to active items belonging to active tenants.
+  5. Direct anonymous Supabase reads on `orders` and `table_sessions` returned `0 rows` (denied by RLS).
+  6. Multi-tenant categories and tables were strictly isolated by `tenant_id`.
+  7. Order idempotency constraint triggered error `23505` (`uq_order_idempotency`).
+  8. Server-side modifier validation asserted constraints against actual database records.
+  9. Explicit tax calculations executed without implicit defaults.
 
-The project is now ready to proceed to **Phase D: Kitchen Display System (KDS) & Order Lifecycle Management** upon user approval.
+### 12.2. Removal of the Implicit 5% Tax Default
+- **Schema Update (`20261117000005_phase_c1_verification_gate.sql`)**:
+  ```sql
+  ALTER TABLE tenants ALTER COLUMN tax_rate_percent DROP DEFAULT;
+  ALTER TABLE tenants ALTER COLUMN tax_rate_percent DROP NOT NULL;
+  ```
+- **Unconfigured State Representation**: Unconfigured tax is represented explicitly as `NULL`.
+- **Safe Documented Order Behavior**:
+  When a tenant's tax rate is `NULL`:
+  - Tax is not silently calculated.
+  - Calculated tax minor units = `0`.
+  - Total payable minor units = Item subtotal minor units.
+  - Contracts and APIs return `taxRatePercent: null`.
+  - Frontend cart renders `Taxes (Unconfigured): ₹0.00`.
+- **Authority**: Only authorized owner/manager actions may configure `tax_rate_percent`.
+- **Arithmetic Invariant**: When configured (e.g. 18.00%), tax is calculated using integer minor units: `Math.round(subtotalMinor * (taxRate / 100))`. No floating-point bill math is allowed.
+- **Verified Scenarios**:
+  - Unconfigured (`NULL`): Subtotal 35000 paise -> Tax 0 paise, Total 35000 paise.
+  - Configured (18.00%): Subtotal 45000 paise -> Tax 8100 paise, Total 53100 paise.
+  - Zero (0.00%): Subtotal 25000 paise -> Tax 0 paise, Total 25000 paise.
+  - Rounding: Subtotal 149 paise at 5% -> `round(149 * 0.05) = 7` paise.
+
+### 12.3. Customer RLS Policy Verification
+- **Verified Policy Posture**:
+  - `table_sessions`: Anonymous role has **ZERO** SELECT policies. Direct Supabase access returns `0 rows`.
+  - `orders`: Anonymous role has **ZERO** SELECT policies. Direct Supabase access returns `0 rows`.
+  - `order_items` & `order_status_events`: Anonymous role has **ZERO** SELECT policies.
+  - `menu_categories`, `menu_items`, `modifier_groups`, `item_modifiers`: Anonymous role can SELECT only available items belonging to active tenants (`t.status = 'ACTIVE'`).
+  - `tenants`: Public SELECT policy added in migration 5 allowing anonymous clients to read active tenant public profiles (`status = 'ACTIVE'`) while keeping private tenant records protected.
+- **Authorization Boundary**: A custom `x-session-token` header does not establish a PostgreSQL RLS role. Therefore, customer order and session access is strictly mediated by verified NestJS application controllers (`CustomerController`), never through unauthenticated Supabase direct client queries.
+
+### 12.4. Final Security Regression Verification
+| Security Check | Verification Status | Evidence |
+| :--- | :--- | :--- |
+| **Missing session token returns 401** | **VERIFIED** | Supertest E2E: `GET /api/v1/customer/orders/:id` without `x-session-token` returns `401 Unauthorized`. |
+| **Wrong session token cannot retrieve order** | **VERIFIED** | Unit & E2E: Non-existent or invalid session token returns `403 Forbidden`. |
+| **Guessing order UUID does not grant access** | **VERIFIED** | Unit & E2E: Order belonging to another table returns `404 Not Found` (prevents ID enumeration). |
+| **Concurrent QR scan race prevention** | **VERIFIED** | Real PostgreSQL 18.6: Second insert triggers `23505` and recovers winning session. |
+| **OUT_OF_SERVICE table rejection** | **VERIFIED** | Unit & E2E: `resolveQrToken` rejects `OUT_OF_SERVICE` or `INACTIVE` table with `403 Forbidden`. |
+| **Cross-tenant menu / order isolation** | **VERIFIED** | Real PostgreSQL & E2E: Queries strictly isolated by `tenant_id`. |
+| **Server-side modifier cardinality** | **VERIFIED** | Real PostgreSQL & Unit: Min/max selection bounds and duplicate modifier IDs enforced on server. |
+| **No hardcoded tax rate remains** | **VERIFIED** | Additive migration 5 removes default 5.00. Unconfigured tax is `NULL` (0 tax calculated). |
+| **No service-role secret exposed** | **VERIFIED** | Client code accesses public endpoints only (`NEXT_PUBLIC_SUPABASE_ANON_KEY`); service-role secret remains isolated in backend `.env`. |
+
+---
+
+## 13. Git & Asset Preservation Status
+
+- **Phase C.1 Commit Hash**: `656a10d` (`fix(security): resolve Phase C.1 security, concurrency, and RLS remediation findings`).
+- **Verification Gate Additions**:
+  - `supabase/migrations/20261117000005_phase_c1_verification_gate.sql` (additive migration).
+  - `apps/api/test/real-postgres-integration.spec.ts` (native PostgreSQL 18.6 integration test suite).
+  - Explicit tax nullability handling across contracts, API, and web frontend.
+- **UI Reference Asset Count**: Exactly **113 image assets** in `docs/ui_design/` preserved untouched.
+- **Phase Boundary**: Phase D has **NOT** been started.
+
+The vertical slice is fully verified, hardened, and ready for Phase D upon product approval.
+

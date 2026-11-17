@@ -260,7 +260,11 @@ function CartCheckoutContent() {
             <span className="font-semibold text-slate-900">₹{(subtotalMinor / 100).toFixed(2)}</span>
           </div>
           <div className="flex justify-between text-slate-600">
-            <span>Taxes & GST ({taxRatePercent}%)</span>
+            <span>
+              {taxRatePercent !== null && taxRatePercent !== undefined
+                ? `Taxes & GST (${taxRatePercent}%)`
+                : 'Taxes (Unconfigured)'}
+            </span>
             <span className="font-semibold text-slate-900">₹{(taxMinor / 100).toFixed(2)}</span>
           </div>
           <div className="border-t border-slate-200 pt-3 flex justify-between items-baseline">

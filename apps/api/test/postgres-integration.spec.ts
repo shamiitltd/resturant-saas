@@ -1,6 +1,11 @@
 import { newDb, DataType } from 'pg-mem';
 
-describe('Real PostgreSQL Engine Integration Tests (Task 9: TEST-MOCK-01)', () => {
+/**
+ * In-Memory SQL Emulator Smoke Suite (pg-mem)
+ * NOTE: pg-mem is an in-memory SQL parser/emulator for rapid unit smoke testing.
+ * For actual PostgreSQL integration tests, see test/real-postgres-integration.spec.ts.
+ */
+describe('In-Memory SQL Emulator (pg-mem Smoke Suite)', () => {
   let db: any;
   let pgClient: any;
 
@@ -31,7 +36,7 @@ describe('Real PostgreSQL Engine Integration Tests (Task 9: TEST-MOCK-01)', () =
         name VARCHAR(255) NOT NULL,
         slug VARCHAR(128) NOT NULL,
         status VARCHAR(32) NOT NULL DEFAULT 'ACTIVE',
-        tax_rate_percent NUMERIC(5,2) NOT NULL DEFAULT 5.00
+        tax_rate_percent NUMERIC(5,2)
       );
 
       CREATE TABLE locations (

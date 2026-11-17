@@ -548,6 +548,88 @@ describe('CustomerService (Phase C.1 Security & Reliability Remediations)', () =
       expect(result.taxMinor).toBe(0);
       expect(result.totalMinor).toBe(30000);
     });
+
+    it('handles unconfigured tax (NULL) safely without silent calculation', async () => {
+      const mockSessionNullTax = {
+        id: 'session-uuid-1',
+        tenant_id: 'tenant-1',
+        location_id: 'loc-1',
+        table_id: 'table-1',
+        table_code: 'T-01',
+        table_label: 'Table 1',
+        session_status: 'OPEN',
+        tax_rate_percent: null, // Unconfigured!
+      };
+
+      mockDbService.query
+        .mockResolvedValueOnce({ rows: [mockSessionNullTax], rowCount: 1 })
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 })
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              id: 'item-paneer',
+              name: 'Paneer Tikka',
+              base_price_minor: 30000,
+              is_available: true,
+              tenant_id: 'tenant-1',
+            },
+          ],
+          rowCount: 1,
+        })
+        .mockResolvedValueOnce({ rows: [], rowCount: 0 });
+
+      mockClient.query.mockResolvedValueOnce({ rows: [{ id: 'order-null-tax' }], rowCount: 1 });
+      mockClient.query.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      mockClient.query.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+      mockClient.query.mockResolvedValueOnce({ rows: [], rowCount: 1 });
+
+      mockDbService.query.mockResolvedValueOnce({
+        rows: [
+          {
+            id: 'order-null-tax',
+            order_number: 'ORD-NULL01',
+            table_session_id: 'session-uuid-1',
+            table_code: 'T-01',
+            table_label: 'Table 1',
+            status: 'PLACED',
+            currency: 'INR',
+            subtotal_minor: 30000,
+            tax_minor: 0,
+            tax_rate_percent: null,
+            discount_minor: 0,
+            total_minor: 30000,
+            created_at: new Date(),
+          },
+        ],
+        rowCount: 1,
+      });
+
+      mockDbService.query.mockResolvedValueOnce({
+        rows: [
+          {
+            item_id: 'item-paneer',
+            item_name_snapshot: 'Paneer Tikka',
+            unit_price_minor: 30000,
+            quantity: 1,
+            subtotal_minor: 30000,
+            notes: null,
+            selected_modifiers: [],
+          },
+        ],
+        rowCount: 1,
+      });
+
+      const result = await customerService.createCustomerOrder({
+        sessionToken: 'sess_abc123',
+        idempotencyKey: 'idemp-tax-null',
+        items: [{ itemId: 'item-paneer', quantity: 1 }],
+      });
+
+      expect(result.subtotalMinor).toBe(30000);
+      expect(result.taxMinor).toBe(0);
+      expect(result.taxRatePercent).toBeNull();
+      expect(result.totalMinor).toBe(30000);
+    });
   });
 
   describe('Task 1: SEC-AUTH-01 — Customer Order Authorization in getOrderForSession', () => {

@@ -123,7 +123,7 @@ export class CustomerService {
       slug: string;
       tax_rate_percent: string | number | null;
     }>(
-      `SELECT id, name, slug, COALESCE(tax_rate_percent, 5.00) as tax_rate_percent
+      `SELECT id, name, slug, tax_rate_percent
        FROM tenants WHERE LOWER(slug) = $1 AND status = 'ACTIVE'`,
       [tenantSlug.toLowerCase().trim()]
     );
@@ -254,7 +254,7 @@ export class CustomerService {
       tenantSlug: tenant.slug,
       locationName: 'Dine-in Menu',
       currency: 'INR',
-      taxRatePercent: Number(tenant.tax_rate_percent || 5.00),
+      taxRatePercent: tenant.tax_rate_percent !== null && tenant.tax_rate_percent !== undefined ? Number(tenant.tax_rate_percent) : null,
       categories,
     };
   }
@@ -285,7 +285,7 @@ export class CustomerService {
     }>(
       `SELECT ts.id, ts.tenant_id, ts.location_id, ts.table_id,
               rt.table_code, rt.label as table_label, ts.status as session_status,
-              COALESCE(t.tax_rate_percent, 5.00) as tax_rate_percent
+              t.tax_rate_percent as tax_rate_percent
        FROM table_sessions ts
        JOIN restaurant_tables rt ON rt.id = ts.table_id
        JOIN tenants t ON t.id = ts.tenant_id
@@ -447,9 +447,13 @@ export class CustomerService {
       });
     }
 
-    // BUS-TAX-01: Dynamic tax percentage calculation
-    const taxRatePercent = Number(session.tax_rate_percent || 0);
-    const calculatedTaxMinor = Math.round(calculatedSubtotalMinor * (taxRatePercent / 100));
+    // BUS-TAX-01: Explicit tax calculation (No implicit default; NULL = unconfigured = 0 tax)
+    const taxRatePercent = session.tax_rate_percent !== null && session.tax_rate_percent !== undefined
+      ? Number(session.tax_rate_percent)
+      : null;
+    const calculatedTaxMinor = taxRatePercent !== null
+      ? Math.round(calculatedSubtotalMinor * (taxRatePercent / 100))
+      : 0;
     const calculatedTotalMinor = calculatedSubtotalMinor + calculatedTaxMinor;
 
     // 4. Atomic Transaction: Order Header + Order Items + Status Event + Outbox Event
@@ -597,7 +601,7 @@ export class CustomerService {
       `SELECT o.id, o.order_number, o.table_session_id, rt.table_code, rt.label as table_label,
               o.status, o.currency, o.subtotal_minor, o.tax_minor, o.discount_minor, o.total_minor,
               o.chef_eta_minutes, o.special_instructions, o.created_at,
-              COALESCE(t.tax_rate_percent, 5.00) as tax_rate_percent
+              t.tax_rate_percent as tax_rate_percent
        FROM orders o
        LEFT JOIN restaurant_tables rt ON rt.id = o.table_id
        JOIN tenants t ON t.id = o.tenant_id
@@ -635,7 +639,7 @@ export class CustomerService {
       currency: o.currency,
       subtotalMinor: o.subtotal_minor,
       taxMinor: o.tax_minor,
-      taxRatePercent: Number(o.tax_rate_percent || 5.00),
+      taxRatePercent: o.tax_rate_percent !== null && o.tax_rate_percent !== undefined ? Number(o.tax_rate_percent) : null,
       discountMinor: o.discount_minor,
       totalMinor: o.total_minor,
       chefEtaMinutes: o.chef_eta_minutes || undefined,
@@ -677,7 +681,7 @@ export class CustomerService {
       `SELECT o.id, o.order_number, o.table_session_id, rt.table_code, rt.label as table_label,
               o.status, o.currency, o.subtotal_minor, o.tax_minor, o.discount_minor, o.total_minor,
               o.chef_eta_minutes, o.special_instructions, o.created_at,
-              COALESCE(t.tax_rate_percent, 5.00) as tax_rate_percent
+              t.tax_rate_percent as tax_rate_percent
        FROM orders o
        LEFT JOIN restaurant_tables rt ON rt.id = o.table_id
        JOIN tenants t ON t.id = o.tenant_id
@@ -714,7 +718,7 @@ export class CustomerService {
       currency: o.currency,
       subtotalMinor: o.subtotal_minor,
       taxMinor: o.tax_minor,
-      taxRatePercent: Number(o.tax_rate_percent || 5.00),
+      taxRatePercent: o.tax_rate_percent !== null && o.tax_rate_percent !== undefined ? Number(o.tax_rate_percent) : null,
       discountMinor: o.discount_minor,
       totalMinor: o.total_minor,
       chefEtaMinutes: o.chef_eta_minutes || undefined,
@@ -744,7 +748,7 @@ export class CustomerService {
       tax_rate_percent: string | number | null;
     }>(
       `SELECT ts.id, ts.status, rt.table_code, rt.label as table_label,
-              COALESCE(t.tax_rate_percent, 5.00) as tax_rate_percent
+              t.tax_rate_percent as tax_rate_percent
        FROM table_sessions ts
        JOIN restaurant_tables rt ON rt.id = ts.table_id
        JOIN tenants t ON t.id = ts.tenant_id
@@ -781,7 +785,7 @@ export class CustomerService {
       tableCode: session.table_code,
       tableLabel: session.table_label,
       currency: 'INR',
-      taxRatePercent: Number(session.tax_rate_percent || 5.00),
+      taxRatePercent: session.tax_rate_percent !== null && session.tax_rate_percent !== undefined ? Number(session.tax_rate_percent) : null,
       orders,
       consolidatedSubtotalMinor: consolidatedSubtotal,
       consolidatedTaxMinor: consolidatedTax,

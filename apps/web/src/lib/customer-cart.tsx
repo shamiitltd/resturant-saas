@@ -33,7 +33,7 @@ export interface TableSessionData {
   tableCode: string;
   tableLabel: string;
   currency: string;
-  taxRatePercent?: number;
+  taxRatePercent?: number | null;
 }
 
 interface CartContextValue {
@@ -58,7 +58,7 @@ interface CartContextValue {
   taxMinor: number;
   totalMinor: number;
   totalItemCount: number;
-  taxRatePercent: number;
+  taxRatePercent: number | null;
 }
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -203,8 +203,8 @@ export function CustomerCartProvider({
 
   const { subtotalMinor, taxMinor, totalMinor, totalItemCount, taxRatePercent } = useMemo(() => {
     const subtotal = items.reduce((sum, i) => sum + i.itemTotalMinor, 0);
-    const rate = session?.taxRatePercent ?? 5.0;
-    const tax = Math.round(subtotal * (rate / 100));
+    const rate = session?.taxRatePercent !== undefined ? session.taxRatePercent : null;
+    const tax = rate !== null ? Math.round(subtotal * (rate / 100)) : 0;
     const total = subtotal + tax;
     const count = items.reduce((sum, i) => sum + i.quantity, 0);
     return {

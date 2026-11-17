@@ -43,6 +43,6 @@ export interface PublicMenuResponseDto {
   tenantSlug: string;
   locationName: string;
   currency: string;
-  taxRatePercent: number;
+  taxRatePercent: number | null;
   categories: MenuCategoryDto[];
 }
