@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
@@ -10,6 +10,7 @@ import type { RegisterOwnerRequestDto, AuthMeResponseDto } from '@restaurant-saa
 
 export default function RegisterOwnerPage() {
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -20,6 +21,10 @@ export default function RegisterOwnerPage() {
 
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Auto-slugify when restaurant name changes
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -45,9 +50,11 @@ export default function RegisterOwnerPage() {
     setLoading(true);
 
     try {
+      const cleanEmail = email.trim().toLowerCase();
+
       // 1. Sign up user credentials with Supabase Auth
       const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: email.trim(),
+        email: cleanEmail,
         password,
         options: {
           data: {
@@ -61,16 +68,8 @@ export default function RegisterOwnerPage() {
       }
 
       const session = authData.session;
-      if (!session) {
-        // If email confirmation is required by Supabase configuration
-        setErrorMessage('Verification email sent. Please verify your email before logging in.');
-        setLoading(false);
-        return;
-      }
-
-      // 2. Provision Tenant and Owner atomically via NestJS API
       const payload: RegisterOwnerRequestDto = {
-        email: email.trim(),
+        email: cleanEmail,
         fullName: fullName.trim(),
         restaurantName: restaurantName.trim(),
         restaurantSlug: restaurantSlug.trim(),
@@ -78,6 +77,16 @@ export default function RegisterOwnerPage() {
         timezone,
       };
 
+      if (!session) {
+        // If email confirmation is enabled, store pending tenant creation and route to OTP verification
+        try {
+          localStorage.setItem('pending_owner_onboarding', JSON.stringify(payload));
+        } catch {}
+        router.push(`/verify-otp?email=${encodeURIComponent(cleanEmail)}`);
+        return;
+      }
+
+      // 2. Provision Tenant and Owner atomically via NestJS API
       await fetchWithAuth<AuthMeResponseDto>('/v1/auth/register-owner', {
         method: 'POST',
         body: JSON.stringify(payload),
@@ -91,6 +100,18 @@ export default function RegisterOwnerPage() {
       setLoading(false);
     }
   };
+
+  if (!mounted) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight text-slate-900">Register your restaurant</h2>
+          <p className="mt-1 text-sm text-slate-600">Create an operating tenant for your restaurant business</p>
+        </div>
+        <div className="h-96 rounded-xl bg-slate-100 animate-pulse" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -106,7 +127,7 @@ export default function RegisterOwnerPage() {
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4" suppressHydrationWarning>
         {/* Owner Details */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
@@ -10,11 +10,16 @@ import type { AuthMeResponseDto } from '@restaurant-saas/contracts';
 
 export default function LoginPage() {
   const router = useRouter();
+  const [mounted, setMounted] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(true);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,9 +27,11 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
+      const cleanEmail = email.trim().toLowerCase();
+
       // 1. Authenticate with Supabase Auth (authoritative credentials provider)
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
+        email: cleanEmail,
         password,
       });
 
@@ -75,6 +82,18 @@ export default function LoginPage() {
     }
   };
 
+  if (!mounted) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-2xl font-bold tracking-tight text-slate-900">Sign in to your restaurant</h2>
+          <p className="mt-1 text-sm text-slate-600">Enter your credentials to access your operating dashboard</p>
+        </div>
+        <div className="h-64 rounded-xl bg-slate-100 animate-pulse" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -85,11 +104,23 @@ export default function LoginPage() {
       {errorMessage && (
         <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           <AlertCircle className="h-5 w-5 shrink-0 text-red-600" />
-          <div className="flex-1">{errorMessage}</div>
+          <div className="flex-1">
+            <p>{errorMessage}</p>
+            {errorMessage.toLowerCase().includes('email not confirmed') && (
+              <p className="mt-2">
+                <Link
+                  href={`/verify-otp?email=${encodeURIComponent(email.trim().toLowerCase())}`}
+                  className="font-semibold text-blue-700 underline hover:text-blue-900"
+                >
+                  Click here to enter your verification code
+                </Link>
+              </p>
+            )}
+          </div>
         </div>
       )}
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4" suppressHydrationWarning>
         <div>
           <label className="block text-xs font-semibold uppercase tracking-wider text-slate-700">Email address</label>
           <div className="relative mt-1">
