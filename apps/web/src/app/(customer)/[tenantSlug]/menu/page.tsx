@@ -183,7 +183,7 @@ function CustomerMenuContent() {
           </div>
 
           {/* Table Badge */}
-          {session && (
+          {session ? (
             <div className="inline-flex items-center gap-2 rounded-xl border border-orange-200 bg-orange-50/70 px-3.5 py-1.5 self-start sm:self-auto">
               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
               <div className="text-left">
@@ -193,6 +193,28 @@ function CustomerMenuContent() {
                 <span className="block text-[10px] text-orange-800 font-medium">Active Dine-in</span>
               </div>
             </div>
+          ) : (
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const data = await publicFetch<any>('/v1/public/table/resolve-qr', {
+                    method: 'POST',
+                    body: JSON.stringify({ qrToken: 'demo-table-4' }),
+                  });
+                  setSession(data);
+                } catch {}
+              }}
+              className="inline-flex items-center gap-2 rounded-xl border border-dashed border-orange-300 bg-orange-50/50 hover:bg-orange-100/70 px-3.5 py-1.5 self-start sm:self-auto transition"
+            >
+              <span className="h-2 w-2 rounded-full bg-orange-400" />
+              <div className="text-left">
+                <span className="block font-bold text-orange-900 text-xs">
+                  Connect to Table 4
+                </span>
+                <span className="block text-[10px] text-orange-700 font-medium">Click to set table</span>
+              </div>
+            </button>
           )}
         </div>
 

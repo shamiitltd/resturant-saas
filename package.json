@@ -5,7 +5,8 @@
   "description": "Multi-tenant Restaurant SaaS Operating Platform",
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev",
+    "dev": "pnpm -r --parallel run dev",
+    "dev:turbo": "turbo run dev",
     "lint": "turbo run lint",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck"

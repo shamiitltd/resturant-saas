@@ -2,6 +2,13 @@
 const nextConfig = {
   transpilePackages: ['@restaurant-saas/contracts', '@restaurant-saas/ui'],
   reactStrictMode: true,
+  async rewrites() {
+    return [
+      { source: '/staff/kitchen', destination: '/kitchen' },
+      { source: '/staff/reception', destination: '/reception' },
+      { source: '/staff/waiter', destination: '/waiter' },
+    ];
+  },
 };
 
 export default nextConfig;

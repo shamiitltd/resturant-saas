@@ -26,4 +26,28 @@ export class AuthController {
   async selectOutlet(@Req() req: any, @Body() dto: SelectOutletRequestDto) {
     return this.authService.selectOutlet(req.user.userId, dto.membershipId, dto.locationId);
   }
+
+  @Post('dev-confirm')
+  @HttpCode(HttpStatus.OK)
+  async devConfirm(@Body('email') email: string) {
+    return this.authService.devConfirmEmail(email);
+  }
+
+  @Post('dev-recovery-link')
+  @HttpCode(HttpStatus.OK)
+  async devRecoveryLink(
+    @Body('email') email: string,
+    @Body('redirectTo') redirectTo?: string
+  ) {
+    return this.authService.devGenerateRecoveryLink(email, redirectTo);
+  }
+
+  @Post('dev-reset-password')
+  @HttpCode(HttpStatus.OK)
+  async devResetPassword(
+    @Body('email') email: string,
+    @Body('password') password: string
+  ) {
+    return this.authService.devResetPassword(email, password);
+  }
 }

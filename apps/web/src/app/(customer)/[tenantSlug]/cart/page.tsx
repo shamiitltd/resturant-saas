@@ -25,6 +25,7 @@ function CartCheckoutContent() {
 
   const {
     session,
+    setSession,
     items,
     updateQuantity,
     removeItem,
@@ -39,11 +40,44 @@ function CartCheckoutContent() {
   const [customerPhone, setCustomerPhone] = useState('');
   const [orderNotes, setOrderNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [connectingTable, setConnectingTable] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  const handleConnectDemoTable = async () => {
+    try {
+      setConnectingTable(true);
+      setErrorMessage(null);
+      const data = await publicFetch<any>('/v1/public/table/resolve-qr', {
+        method: 'POST',
+        body: JSON.stringify({ qrToken: 'demo-table-4' }),
+      });
+      setSession(data);
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Failed to connect to Table 4');
+    } finally {
+      setConnectingTable(false);
+    }
+  };
+
   const handlePlaceOrder = async () => {
-    if (!session || !session.sessionToken) {
-      setErrorMessage('No active table session found. Please re-scan table QR code.');
+    let activeSession = session;
+    if (!activeSession || !activeSession.sessionToken) {
+      // Auto-connect to demo table so customer is not blocked
+      try {
+        const data = await publicFetch<any>('/v1/public/table/resolve-qr', {
+          method: 'POST',
+          body: JSON.stringify({ qrToken: 'demo-table-4' }),
+        });
+        setSession(data);
+        activeSession = data;
+      } catch (tableErr: any) {
+        setErrorMessage('No active table session found. Please connect to a table before placing your order.');
+        return;
+      }
+    }
+
+    if (!activeSession) {
+      setErrorMessage('No active table session found. Please connect to a table before placing your order.');
       return;
     }
 
@@ -60,7 +94,7 @@ function CartCheckoutContent() {
       const idempotencyKey = `idemp_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
 
       const payload = {
-        sessionToken: session.sessionToken,
+        sessionToken: activeSession.sessionToken,
         idempotencyKey,
         customerName: customerName.trim() || undefined,
         customerPhone: customerPhone.trim() || undefined,
@@ -129,21 +163,48 @@ function CartCheckoutContent() {
       </div>
 
       {/* Table Badge Header */}
-      <div className="rounded-2xl border border-orange-100 bg-white p-4 shadow-xs mb-5 flex items-center justify-between">
-        <div>
-          <span className="text-[11px] font-bold text-orange-600 uppercase tracking-wider">
-            Table Order
-          </span>
-          <h1 className="font-extrabold text-slate-900 text-lg">
-            {session ? `${session.tenantName} • ${session.tableLabel}` : 'Table Order Checkout'}
-          </h1>
-        </div>
-        {session && (
+      {session ? (
+        <div className="rounded-2xl border border-orange-100 bg-white p-4 shadow-xs mb-5 flex items-center justify-between">
+          <div>
+            <span className="text-[11px] font-bold text-orange-600 uppercase tracking-wider">
+              Table Order
+            </span>
+            <h1 className="font-extrabold text-slate-900 text-lg">
+              {session.tenantName} • {session.tableLabel}
+            </h1>
+          </div>
           <span className="rounded-lg bg-orange-50 px-2.5 py-1 font-extrabold text-orange-700 text-xs">
             {session.tableCode}
           </span>
-        )}
-      </div>
+        </div>
+      ) : (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 shadow-xs mb-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-1.5 text-amber-800 font-bold text-xs">
+              <AlertCircle className="h-4 w-4 text-amber-600" />
+              <span>Table Connection Required</span>
+            </div>
+            <p className="text-xs text-amber-700 mt-0.5">
+              Dine-in orders are served to your table. Connect to Table 4 to proceed.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={connectingTable}
+            onClick={handleConnectDemoTable}
+            className="inline-flex items-center gap-1.5 rounded-xl bg-orange-600 px-3.5 py-2 text-xs font-bold text-white shadow-xs hover:bg-orange-700 disabled:opacity-50 transition"
+          >
+            {connectingTable ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <span>Connecting...</span>
+              </>
+            ) : (
+              <span>Connect Table 4 (T-04)</span>
+            )}
+          </button>
+        </div>
+      )}
 
       {/* Cart Items List */}
       <div className="rounded-2xl border border-slate-200 bg-white shadow-xs overflow-hidden mb-5">

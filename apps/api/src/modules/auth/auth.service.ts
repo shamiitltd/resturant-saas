@@ -17,7 +17,16 @@ export class AuthService {
     );
 
     if (userRes.rows.length === 0) {
-      throw new NotFoundException('User profile not found');
+      // User is authenticated in Supabase but has not created a restaurant/profile yet
+      return {
+        user: {
+          id: userId,
+          email: '',
+          fullName: 'New User',
+        },
+        isPlatformAdmin: false,
+        memberships: [],
+      };
     }
     const user = userRes.rows[0];
 
@@ -119,6 +128,9 @@ export class AuthService {
     return await this.db.transaction(async (client) => {
       // 1. Check slug uniqueness
       const slugCheck = await client.query('SELECT id FROM tenants WHERE LOWER(slug) = $1', [slug]);
+      if (slugCheck?.rows?.length > 0) {
+        throw new ConflictException(`Restaurant URL slug '${slug}' is already in use`);
+      }
       if (slugCheck.rows.length > 0) {
         throw new ConflictException(`Restaurant URL slug '${slug}' is already in use`);
       }
@@ -158,10 +170,21 @@ export class AuthService {
       );
       const membershipId = membershipRes.rows[0].id;
 
-      // 6. Find system OWNER role
-      const ownerRoleRes = await client.query<{ id: string }>(
+      // 6. Find system OWNER role (self-healing fallback if baseline unseeded)
+      let ownerRoleRes = await client.query<{ id: string }>(
         `SELECT id FROM roles WHERE code = 'OWNER' AND is_system_role = true LIMIT 1`
       );
+      if (ownerRoleRes.rows.length === 0) {
+        await client.query(`
+          INSERT INTO roles (id, tenant_id, code, name, description, is_system_role)
+          VALUES 
+            ('11111111-1111-1111-1111-111111111102', NULL, 'OWNER', 'Restaurant Owner', 'Full control over restaurant tenant and operations', true)
+          ON CONFLICT (id) DO NOTHING;
+        `);
+        ownerRoleRes = await client.query<{ id: string }>(
+          `SELECT id FROM roles WHERE code = 'OWNER' AND is_system_role = true LIMIT 1`
+        );
+      }
       if (ownerRoleRes.rows.length === 0) {
         throw new Error('System OWNER role not initialized');
       }
@@ -184,7 +207,7 @@ export class AuthService {
       // 9. Record Audit Log
       await client.query(
         `INSERT INTO audit_logs (tenant_id, location_id, actor_id, actor_type, action, resource_type, resource_id, details)
-         VALUES ($1, $2, $3, 'TENANT_USER', 'TENANT_REGISTERED', 'tenant', $1, $4)`,
+         VALUES ($1::uuid, $2::uuid, $3::uuid, 'TENANT_USER', 'TENANT_REGISTERED', 'tenant', $1::text, $4::jsonb)`,
         [tenantId, locationId, userId, JSON.stringify({ slug, restaurantName: dto.restaurantName })]
       );
 
@@ -213,5 +236,128 @@ export class AuthService {
       membershipId,
       locationId,
     };
+  }
+
+  /**
+   * Development helper: Auto-confirm email in Supabase Auth
+   */
+  async devConfirmEmail(email: string) {
+    if (!email) throw new BadRequestException('Email is required');
+    const cleanEmail = email.trim().toLowerCase();
+
+    const result = await this.db.query(
+      `UPDATE auth.users
+       SET email_confirmed_at = COALESCE(email_confirmed_at, NOW())
+       WHERE LOWER(email) = $1
+       RETURNING id, email`,
+      [cleanEmail]
+    );
+
+    if (result.rows.length === 0) {
+      throw new NotFoundException(`No registered user found for email ${cleanEmail}`);
+    }
+
+    return {
+      success: true,
+      message: `Email ${cleanEmail} has been successfully verified!`,
+    };
+  }
+
+  /**
+   * Development helper: Generate a password recovery action link via Supabase Admin
+   */
+  async devGenerateRecoveryLink(email: string, redirectTo?: string) {
+    if (!email) throw new BadRequestException('Email is required');
+    const cleanEmail = email.trim().toLowerCase();
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!supabaseUrl || !serviceKey) {
+      throw new BadRequestException('Supabase admin credentials missing from environment');
+    }
+
+    try {
+      const res = await fetch(`${supabaseUrl}/auth/v1/admin/generate_link`, {
+        method: 'POST',
+        headers: {
+          apikey: serviceKey,
+          Authorization: `Bearer ${serviceKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: 'recovery',
+          email: cleanEmail,
+          redirect_to: redirectTo || 'http://localhost:3000/reset-password',
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new BadRequestException(
+          data.msg || data.message || 'Failed to generate password recovery link'
+        );
+      }
+
+      return {
+        success: true,
+        actionLink: data.action_link,
+        emailOtp: data.email_otp,
+      };
+    } catch (err: any) {
+      throw new BadRequestException(err.message || 'Error generating recovery link');
+    }
+  }
+
+  /**
+   * Development helper: Directly reset a user password via Supabase Admin
+   */
+  async devResetPassword(email: string, password: string) {
+    if (!email || !password) {
+      throw new BadRequestException('Email and password are required');
+    }
+    const cleanEmail = email.trim().toLowerCase();
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!supabaseUrl || !serviceKey) {
+      throw new BadRequestException('Supabase credentials missing from environment');
+    }
+
+    const userResult = await this.db.query(
+      `SELECT id, email FROM auth.users WHERE LOWER(email) = $1`,
+      [cleanEmail]
+    );
+
+    if (userResult.rows.length === 0) {
+      throw new NotFoundException(`No account found with email ${cleanEmail}`);
+    }
+
+    const userId = userResult.rows[0].id;
+
+    try {
+      const res = await fetch(`${supabaseUrl}/auth/v1/admin/users/${userId}`, {
+        method: 'PUT',
+        headers: {
+          apikey: serviceKey,
+          Authorization: `Bearer ${serviceKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ password }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new BadRequestException(
+          data.msg || data.message || 'Failed to update user password'
+        );
+      }
+
+      return {
+        success: true,
+        message: `Password for ${cleanEmail} has been successfully reset!`,
+      };
+    } catch (err: any) {
+      throw new BadRequestException(err.message || 'Error updating password via admin');
+    }
   }
 }
