@@ -177,6 +177,22 @@ export default function KitchenDisplaySystemPage() {
         </div>
       </div>
 
+      {error && (
+        <div className="mb-6 flex items-center justify-between rounded-2xl border border-red-500/50 bg-red-950/80 p-3.5 text-xs text-red-200 shadow-md">
+          <div className="flex items-center gap-2.5">
+            <AlertTriangle className="h-4 w-4 text-red-400 shrink-0" />
+            <span>{error}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => loadKdsOrders(false)}
+            className="rounded-xl bg-red-800/80 px-3 py-1 text-xs font-bold text-white hover:bg-red-700 transition"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
       {/* 3-Column KDS Multi-Lane Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 items-start">
         {/* Lane 1: NEW / PLACED */}

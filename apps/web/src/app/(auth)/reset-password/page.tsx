@@ -276,7 +276,7 @@ export default function ResetPasswordPage() {
                         : 'text-red-500'
                     }`}
                   >
-                    {isStrong ? '✓ Strong' : score >= 3 ? 'Medium' : 'Weak'}
+                    {isStrong ? 'Strong' : score >= 3 ? 'Medium' : 'Weak'}
                   </span>
                 </div>
                 <div className="grid grid-cols-4 gap-1.5">

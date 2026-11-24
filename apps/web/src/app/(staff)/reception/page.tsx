@@ -14,6 +14,9 @@ import {
   Bell,
   ArrowRight,
   TrendingUp,
+  Banknote,
+  QrCode,
+  Wallet,
 } from 'lucide-react';
 import { fetchWithAuth } from '@/lib/api';
 import type { StaffOrderDto, OrderLifecycleStatus } from '@restaurant-saas/contracts';
@@ -85,15 +88,15 @@ export default function ReceptionDashboardPage() {
     return () => clearInterval(interval);
   }, [loadOrders]);
 
-  const handleUpdateStatus = async (orderId: string, targetStatus: OrderLifecycleStatus) => {
+  const handleUpdateStatus = async (orderId: string, targetStatus: OrderLifecycleStatus, notes?: string) => {
     try {
       await fetchWithAuth(`/v1/staff/orders/${orderId}/status`, {
         method: 'PATCH',
-        body: JSON.stringify({ status: targetStatus }),
+        body: JSON.stringify({ status: targetStatus, notes }),
       });
       await loadOrders(true);
       if (selectedOrder?.id === orderId) {
-        setSelectedOrder((prev) => (prev ? { ...prev, status: targetStatus } : null));
+        setSelectedOrder((prev) => (prev ? { ...prev, status: targetStatus, settlementNotes: notes } : null));
       }
     } catch (err: any) {
       alert(err.message || 'Failed to update order status');
@@ -124,13 +127,32 @@ export default function ReceptionDashboardPage() {
     setSelectedOrder(null);
   };
 
-  // Metrics
+  // Operational Metrics
   const placedCount = orders.filter((o) => o.status === 'PLACED').length;
   const preparingCount = orders.filter((o) => o.status === 'PREPARING' || o.status === 'ACCEPTED').length;
   const readyCount = orders.filter((o) => o.status === 'READY').length;
   const activeTotal = orders.filter(
     (o) => o.status !== 'COMPLETED' && o.status !== 'CANCELLED' && o.status !== 'REJECTED'
   ).length;
+
+  // Financial & Payment Tracking Metrics
+  const nonCancelledOrders = orders.filter((o) => o.status !== 'CANCELLED' && o.status !== 'REJECTED');
+  const totalRevenueMinor = nonCancelledOrders.reduce((sum, o) => sum + o.totalMinor, 0);
+
+  const completedOrders = orders.filter((o) => o.status === 'COMPLETED');
+  const completedRevenueMinor = completedOrders.reduce((sum, o) => sum + o.totalMinor, 0);
+
+  const cashCollectedMinor = completedOrders
+    .filter((o) => o.settlementNotes?.includes('PAID_CASH') || o.settlementNotes?.toLowerCase().includes('cash'))
+    .reduce((sum, o) => sum + o.totalMinor, 0);
+
+  const upiCollectedMinor = completedOrders
+    .filter((o) => o.settlementNotes?.includes('PAID_UPI') || o.settlementNotes?.toLowerCase().includes('upi'))
+    .reduce((sum, o) => sum + o.totalMinor, 0);
+
+  const pendingSettlementMinor = orders
+    .filter((o) => o.status === 'SERVED' || o.status === 'READY' || o.status === 'PREPARING' || o.status === 'ACCEPTED' || o.status === 'PLACED')
+    .reduce((sum, o) => sum + o.totalMinor, 0);
 
   // Filtered orders
   const filteredOrders = orders.filter((order) => {
@@ -185,6 +207,88 @@ export default function ReceptionDashboardPage() {
           </button>
         </div>
       )}
+
+      {/* Reception Revenue & Payment Collection Tracker */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+              Total Sales Today
+            </span>
+            <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-700">
+              {nonCancelledOrders.length} orders
+            </span>
+          </div>
+          <div className="mt-2 flex items-baseline gap-1">
+            <span className="text-2xl font-black text-slate-900">
+              ₹{(totalRevenueMinor / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            </span>
+          </div>
+          <p className="text-[11px] text-slate-400 mt-1">
+            Settled: ₹{(completedRevenueMinor / 100).toFixed(0)} &bull; Active: ₹{(pendingSettlementMinor / 100).toFixed(0)}
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/50 p-4 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-emerald-800 uppercase tracking-wider flex items-center gap-1.5">
+              <Banknote className="h-4 w-4 text-emerald-600" />
+              <span>Cash Collected</span>
+            </span>
+            <span className="rounded-md bg-emerald-100 text-emerald-800 px-2 py-0.5 text-[10px] font-extrabold">
+              CASH
+            </span>
+          </div>
+          <div className="mt-2 flex items-baseline gap-1">
+            <span className="text-2xl font-black text-emerald-700">
+              ₹{(cashCollectedMinor / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            </span>
+          </div>
+          <p className="text-[11px] text-emerald-600 mt-1">
+            Verified cash received at reception counter
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-purple-200 bg-purple-50/50 p-4 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-purple-800 uppercase tracking-wider flex items-center gap-1.5">
+              <QrCode className="h-4 w-4 text-purple-600" />
+              <span>UPI Collected</span>
+            </span>
+            <span className="rounded-md bg-purple-100 text-purple-800 px-2 py-0.5 text-[10px] font-extrabold">
+              UPI QR
+            </span>
+          </div>
+          <div className="mt-2 flex items-baseline gap-1">
+            <span className="text-2xl font-black text-purple-700">
+              ₹{(upiCollectedMinor / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            </span>
+          </div>
+          <p className="text-[11px] text-purple-600 mt-1">
+            Verified bank UPI transfers
+          </p>
+        </div>
+
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 shadow-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-amber-800 uppercase tracking-wider flex items-center gap-1.5">
+              <Clock className="h-4 w-4 text-amber-600" />
+              <span>Pending Table Bills</span>
+            </span>
+            <span className="rounded-md bg-amber-100 text-amber-800 px-2 py-0.5 text-[10px] font-extrabold">
+              UNSETTLED
+            </span>
+          </div>
+          <div className="mt-2 flex items-baseline gap-1">
+            <span className="text-2xl font-black text-amber-700">
+              ₹{(pendingSettlementMinor / 100).toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+            </span>
+          </div>
+          <p className="text-[11px] text-amber-600 mt-1">
+            Active diners / tables awaiting billing
+          </p>
+        </div>
+      </div>
 
       {/* Reception Operational KPI Header */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
@@ -452,11 +556,32 @@ export default function ReceptionDashboardPage() {
                   {order.status === 'SERVED' && (
                     <button
                       type="button"
-                      onClick={() => handleUpdateStatus(order.id, 'COMPLETED')}
-                      className="rounded-xl bg-slate-800 px-3 py-1.5 text-xs font-bold text-white hover:bg-slate-900 shadow-xs"
+                      onClick={() => setSelectedOrder(order)}
+                      className="rounded-xl bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-700 shadow-xs"
                     >
-                      Finish
+                      Settle Bill
                     </button>
+                  )}
+
+                  {order.status === 'COMPLETED' && (
+                    <span className="inline-flex items-center gap-1 rounded-md bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
+                      {order.settlementNotes?.includes('PAID_CASH') ? (
+                        <>
+                          <Banknote className="h-3 w-3 text-emerald-600" />
+                          <span>Cash</span>
+                        </>
+                      ) : order.settlementNotes?.includes('PAID_UPI') ? (
+                        <>
+                          <QrCode className="h-3 w-3 text-purple-600" />
+                          <span>UPI</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+                          <span>Settled</span>
+                        </>
+                      )}
+                    </span>
                   )}
                 </div>
               </div>

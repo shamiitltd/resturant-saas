@@ -28,11 +28,24 @@ export async function fetchWithAuth<T>(
     if (tok) {
       headers.set('Authorization', `Bearer ${tok}`);
     }
-    if (tenantId) {
-      headers.set('x-tenant-id', tenantId);
+
+    const effectiveTenantId =
+      tenantId ||
+      (typeof window !== 'undefined'
+        ? localStorage.getItem('staff_tenant_id') || undefined
+        : undefined);
+
+    const effectiveLocationId =
+      locationId ||
+      (typeof window !== 'undefined'
+        ? localStorage.getItem('staff_location_id') || undefined
+        : undefined);
+
+    if (effectiveTenantId) {
+      headers.set('x-tenant-id', effectiveTenantId);
     }
-    if (locationId) {
-      headers.set('x-location-id', locationId);
+    if (effectiveLocationId) {
+      headers.set('x-location-id', effectiveLocationId);
     }
     return headers;
   };

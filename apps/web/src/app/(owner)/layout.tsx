@@ -88,9 +88,10 @@ export default function OwnerLayout({
   };
 
   return (
-    <div className="flex min-h-screen w-full bg-[#F8FAFC]">
+    <div className="flex min-h-screen w-full bg-[#F8FAFC]" suppressHydrationWarning>
       {/* Left Sidebar (Fixed 256px, locked strictly on the left side matching 01-owner-dashboard-overview.png) */}
       <aside
+        suppressHydrationWarning
         className={`fixed inset-y-0 left-0 z-50 w-64 shrink-0 bg-[#181111] text-slate-300 flex flex-col justify-between p-4 transition-transform duration-200 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${
           mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
@@ -102,6 +103,7 @@ export default function OwnerLayout({
             <button
               type="button"
               onClick={() => setMobileMenuOpen(false)}
+              suppressHydrationWarning
               className="lg:hidden text-slate-400 hover:text-white"
             >
               <X className="h-5 w-5" />
@@ -160,6 +162,7 @@ export default function OwnerLayout({
               type="button"
               onClick={handleSignOut}
               title="Sign Out"
+              suppressHydrationWarning
               className="text-slate-400 hover:text-red-400 transition"
             >
               <LogOut className="h-3.5 w-3.5" />
@@ -169,13 +172,14 @@ export default function OwnerLayout({
       </aside>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 w-full overflow-x-hidden">
+      <div className="flex-1 flex flex-col min-w-0 w-full overflow-x-hidden" suppressHydrationWarning>
         {/* Top Header Bar */}
-        <header className="h-16 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between sticky top-0 z-40">
+        <header className="h-16 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between sticky top-0 z-40" suppressHydrationWarning>
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => setMobileMenuOpen(true)}
+              suppressHydrationWarning
               className="lg:hidden p-2 text-slate-600 hover:bg-slate-100 rounded-lg"
             >
               <Menu className="h-5 w-5" />
@@ -196,6 +200,7 @@ export default function OwnerLayout({
             {/* Notification Bell */}
             <button
               type="button"
+              suppressHydrationWarning
               className="relative p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition"
             >
               <Bell className="h-4 w-4" />
@@ -217,7 +222,7 @@ export default function OwnerLayout({
         </header>
 
         {/* Page Content Body */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto">
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-y-auto" suppressHydrationWarning>
           {children}
         </main>
       </div>

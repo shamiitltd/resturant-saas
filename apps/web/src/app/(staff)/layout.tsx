@@ -63,6 +63,16 @@ export default function StaffLayout({
         }
 
         const profile = await fetchWithAuth<AuthMeResponseDto>('/v1/auth/me');
+        if (profile.memberships.length > 0) {
+          const m = profile.memberships[0];
+          try {
+            localStorage.setItem('staff_tenant_id', m.tenantId);
+            if (m.locations.length > 0) {
+              localStorage.setItem('staff_location_id', m.locations[0].id);
+            }
+          } catch {}
+        }
+
         const role = profile.isPlatformAdmin
           ? 'PLATFORM_ADMIN'
           : profile.memberships[0]?.roles[0]?.code?.toUpperCase() ||

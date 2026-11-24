@@ -105,6 +105,7 @@ export interface StaffOrderDto {
   specialInstructions?: string;
   rejectionReason?: string;
   cancellationReason?: string;
+  settlementNotes?: string;
   waiterId?: string;
   waiterName?: string;
   serviceMode: 'TABLE_SERVICE' | 'COUNTER_SERVICE' | 'HYBRID';

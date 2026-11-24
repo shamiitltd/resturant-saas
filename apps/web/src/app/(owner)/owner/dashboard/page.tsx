@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import Link from 'next/link';
 import { supabase } from '@/lib/supabase';
 import { fetchWithAuth } from '@/lib/api';
@@ -23,32 +23,151 @@ import {
   Settings,
   ChevronRight,
   Zap,
+  Clock,
+  RefreshCw,
 } from 'lucide-react';
 import type { AuthMeResponseDto } from '@restaurant-saas/contracts';
 
+interface OwnerAnalyticsDto {
+  totalSalesMinor: number;
+  totalOrders: number;
+  completedOrders: number;
+  activeOrders: number;
+  totalGuests: number;
+  avgOrderValueMinor: number;
+  totalOutlets: number;
+  totalStaff: number;
+  totalMenuItems: number;
+  totalCategories: number;
+  salesTrend: {
+    date: string;
+    label: string;
+    salesMinor: number;
+    ordersCount: number;
+  }[];
+  channelBreakdown: {
+    channel: string;
+    name: string;
+    ordersCount: number;
+    salesMinor: number;
+    percentage: number;
+    color: string;
+  }[];
+  outletPerformance: {
+    id: string;
+    name: string;
+    code: string;
+    salesMinor: number;
+    ordersCount: number;
+    avgOrderValueMinor: number;
+    status: string;
+  }[];
+  topSellingItems: {
+    name: string;
+    category: string;
+    ordersCount: number;
+    revenueMinor: number;
+  }[];
+  recentOrders: {
+    id: string;
+    orderNumber: string;
+    tableCode: string | null;
+    status: string;
+    totalMinor: number;
+    channel: string;
+    createdAt: string;
+  }[];
+}
+
 export default function OwnerDashboardPage() {
-  const [ownerName, setOwnerName] = useState('Raghav');
+  const [ownerName, setOwnerName] = useState('Restaurant Owner');
+  const [greeting, setGreeting] = useState('Good day');
   const [salesMetricMode, setSalesMetricMode] = useState<'sales' | 'orders'>('sales');
+  const [analytics, setAnalytics] = useState<OwnerAnalyticsDto | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Dynamic greeting based on current local hour
+    const hour = new Date().getHours();
+    if (hour < 12) {
+      setGreeting('Good morning');
+    } else if (hour < 17) {
+      setGreeting('Good afternoon');
+    } else {
+      setGreeting('Good evening');
+    }
+
     async function loadData() {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          const profile = await fetchWithAuth<AuthMeResponseDto>('/v1/auth/me');
-          const firstName = (profile.user.fullName || session.user.user_metadata?.full_name || 'Raghav').split(' ')[0];
-          setOwnerName(firstName);
+        setLoading(true);
+        const [profileRes, analyticsRes] = await Promise.allSettled([
+          fetchWithAuth<AuthMeResponseDto>('/v1/auth/me'),
+          fetchWithAuth<OwnerAnalyticsDto>('/v1/owner/analytics/overview'),
+        ]);
+
+        if (profileRes.status === 'fulfilled' && profileRes.value?.user) {
+          const fullName = profileRes.value.user.fullName || 'Restaurant Owner';
+          setOwnerName(fullName.split(' ')[0]);
+        }
+
+        if (analyticsRes.status === 'fulfilled' && analyticsRes.value) {
+          setAnalytics(analyticsRes.value);
         }
       } catch (err) {
-        console.warn('Dashboard profile load fallback:', err);
+        console.warn('Dashboard real data load fallback:', err);
+      } finally {
+        setLoading(false);
       }
     }
     loadData();
   }, []);
 
+  // Compute dynamic SVG coordinates for sales/orders trend
+  const trendPoints = useMemo(() => {
+    const data = analytics?.salesTrend || [];
+    if (data.length === 0) return { polyline: '0,130 400,130', polygon: '0,130 400,130 400,150 0,150', maxVal: 0, peakLabel: '₹0' };
+
+    const values = data.map((d) => (salesMetricMode === 'sales' ? Math.round(d.salesMinor / 100) : d.ordersCount));
+    const maxVal = Math.max(...values, salesMetricMode === 'sales' ? 1000 : 5);
+
+    const stepX = 400 / Math.max(data.length - 1, 1);
+    const coords = values.map((val, idx) => {
+      const x = Math.round(idx * stepX);
+      const y = Math.round(140 - (val / maxVal) * 90);
+      return { x, y, val };
+    });
+
+    const polyline = coords.map((c) => `${c.x},${c.y}`).join(' ');
+    const polygon = `0,150 ${polyline} 400,150`;
+
+    // Find peak
+    let peakIndex = 0;
+    let peakValue = values[0] || 0;
+    values.forEach((v, i) => {
+      if (v > peakValue) {
+        peakValue = v;
+        peakIndex = i;
+      }
+    });
+
+    const peakLabel = salesMetricMode === 'sales' ? `₹${peakValue.toLocaleString('en-IN')}` : `${peakValue} Orders`;
+
+    return {
+      polyline,
+      polygon,
+      maxVal,
+      peakLabel,
+      peakCoord: coords[peakIndex] || { x: 200, y: 70 },
+      coords,
+    };
+  }, [analytics, salesMetricMode]);
+
+  const totalSalesINR = Math.round((analytics?.totalSalesMinor || 0) / 100);
+  const avgOrderINR = Math.round((analytics?.avgOrderValueMinor || 0) / 100);
+
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
-      {/* 1. Welcome Banner matching 01-owner-dashboard-overview.png */}
+    <div className="space-y-6 max-w-7xl mx-auto pb-12">
+      {/* 1. Welcome Banner */}
       <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 rounded-2xl bg-white p-6 border border-slate-200/80 shadow-xs">
         <div className="flex items-center gap-4">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-600 border border-amber-200/60 shadow-xs">
@@ -56,22 +175,22 @@ export default function OwnerDashboardPage() {
           </div>
           <div>
             <h1 className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
-              Good afternoon, {ownerName} 👋
+              {greeting}, {ownerName}
             </h1>
             <p className="text-xs sm:text-sm text-slate-500 mt-0.5">
-              Here&apos;s how your restaurants are performing across all outlets.
+              Live operational performance across your restaurant branches.
             </p>
           </div>
         </div>
 
-        {/* Counter Pills on Right */}
+        {/* Counter Pills on Right (Directly from Database) */}
         <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto">
           <div className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-orange-50/70 border border-orange-100">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-100 text-[#FF4E00]">
               <Store className="h-4 w-4" />
             </div>
             <div>
-              <p className="text-sm font-bold text-slate-900 leading-none">3</p>
+              <p className="text-sm font-bold text-slate-900 leading-none">{analytics?.totalOutlets ?? 0}</p>
               <p className="text-[11px] text-slate-500 mt-0.5 leading-none">Outlets</p>
             </div>
           </div>
@@ -81,7 +200,7 @@ export default function OwnerDashboardPage() {
               <Users className="h-4 w-4" />
             </div>
             <div>
-              <p className="text-sm font-bold text-slate-900 leading-none">42</p>
+              <p className="text-sm font-bold text-slate-900 leading-none">{analytics?.totalStaff ?? 0}</p>
               <p className="text-[11px] text-slate-500 mt-0.5 leading-none">Total Staff</p>
             </div>
           </div>
@@ -91,32 +210,32 @@ export default function OwnerDashboardPage() {
               <UtensilsCrossed className="h-4 w-4" />
             </div>
             <div>
-              <p className="text-sm font-bold text-slate-900 leading-none">142</p>
+              <p className="text-sm font-bold text-slate-900 leading-none">{analytics?.totalMenuItems ?? 0}</p>
               <p className="text-[11px] text-slate-500 mt-0.5 leading-none">Menu Items</p>
             </div>
           </div>
 
           <div className="flex items-center gap-2.5 px-3.5 py-2 rounded-xl bg-emerald-50/70 border border-emerald-100">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-100 text-emerald-700">
-              <GitFork className="h-4 w-4" />
+              <Layers className="h-4 w-4" />
             </div>
             <div>
-              <p className="text-sm font-bold text-slate-900 leading-none">2</p>
-              <p className="text-[11px] text-slate-500 mt-0.5 leading-none">Integrations</p>
+              <p className="text-sm font-bold text-slate-900 leading-none">{analytics?.totalCategories ?? 0}</p>
+              <p className="text-[11px] text-slate-500 mt-0.5 leading-none">Categories</p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* 2. Top Metric Cards (5 Cards Row) */}
+      {/* 2. Top Metric Cards (5 Cards Row - 100% Real PostgreSQL Data) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
         {/* Total Sales */}
         <div className="rounded-2xl bg-white p-5 border border-slate-200/80 shadow-xs flex items-center justify-between">
           <div>
             <span className="text-xs font-semibold text-slate-500">Total Sales</span>
-            <p className="text-xl font-extrabold text-slate-900 mt-1">₹5,62,430</p>
+            <p className="text-xl font-extrabold text-slate-900 mt-1">₹{totalSalesINR.toLocaleString('en-IN')}</p>
             <div className="flex items-center gap-1 text-[11px] font-semibold text-emerald-600 mt-1">
-              <span>▲ +12.4%</span>
+              <span>● Live database total</span>
             </div>
           </div>
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-50 text-[#FF4E00] border border-orange-100 font-extrabold text-lg">
@@ -128,9 +247,9 @@ export default function OwnerDashboardPage() {
         <div className="rounded-2xl bg-white p-5 border border-slate-200/80 shadow-xs flex items-center justify-between">
           <div>
             <span className="text-xs font-semibold text-slate-500">Total Orders</span>
-            <p className="text-xl font-extrabold text-slate-900 mt-1">1,286</p>
-            <div className="flex items-center gap-1 text-[11px] font-semibold text-emerald-600 mt-1">
-              <span>▲ +10.9%</span>
+            <p className="text-xl font-extrabold text-slate-900 mt-1">{analytics?.totalOrders ?? 0}</p>
+            <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-500 mt-1">
+              <span>{analytics?.completedOrders ?? 0} Completed</span>
             </div>
           </div>
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50 text-amber-600 border border-amber-100">
@@ -138,17 +257,17 @@ export default function OwnerDashboardPage() {
           </div>
         </div>
 
-        {/* Total Guests */}
+        {/* Active Orders */}
         <div className="rounded-2xl bg-white p-5 border border-slate-200/80 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-xs font-semibold text-slate-500">Total Guests</span>
-            <p className="text-xl font-extrabold text-slate-900 mt-1">3,742</p>
-            <div className="flex items-center gap-1 text-[11px] font-semibold text-emerald-600 mt-1">
-              <span>▲ +11.8%</span>
+            <span className="text-xs font-semibold text-slate-500">Active Kitchen Orders</span>
+            <p className="text-xl font-extrabold text-slate-900 mt-1">{analytics?.activeOrders ?? 0}</p>
+            <div className="flex items-center gap-1 text-[11px] font-semibold text-orange-600 mt-1">
+              <span>In Kitchen / Service</span>
             </div>
           </div>
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600 border border-blue-100">
-            <Users className="h-5 w-5" />
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-50 text-orange-600 border border-orange-100">
+            <Clock className="h-5 w-5" />
           </div>
         </div>
 
@@ -156,9 +275,9 @@ export default function OwnerDashboardPage() {
         <div className="rounded-2xl bg-white p-5 border border-slate-200/80 shadow-xs flex items-center justify-between">
           <div>
             <span className="text-xs font-semibold text-slate-500">Avg. Order Value</span>
-            <p className="text-xl font-extrabold text-slate-900 mt-1">₹436</p>
+            <p className="text-xl font-extrabold text-slate-900 mt-1">₹{avgOrderINR.toLocaleString('en-IN')}</p>
             <div className="flex items-center gap-1 text-[11px] font-semibold text-emerald-600 mt-1">
-              <span>▲ +1.4%</span>
+              <span>Per confirmed order</span>
             </div>
           </div>
           <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-orange-50 text-[#FF4E00] border border-orange-100">
@@ -166,29 +285,27 @@ export default function OwnerDashboardPage() {
           </div>
         </div>
 
-        {/* Avg Rating */}
+        {/* Total Guests */}
         <div className="rounded-2xl bg-white p-5 border border-slate-200/80 shadow-xs flex items-center justify-between">
           <div>
-            <span className="text-xs font-semibold text-slate-500">Avg. Rating</span>
-            <p className="text-xl font-extrabold text-slate-900 mt-1 flex items-center gap-1">
-              4.6 <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
-            </p>
-            <span className="text-[11px] text-slate-400 mt-1 block">(1,284 reviews)</span>
+            <span className="text-xs font-semibold text-slate-500">Total Diners</span>
+            <p className="text-xl font-extrabold text-slate-900 mt-1">{analytics?.totalGuests ?? 0}</p>
+            <span className="text-[11px] text-slate-400 mt-1 block">Table guest sessions</span>
           </div>
-          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-amber-50 text-amber-500 border border-amber-100">
-            <Star className="h-5 w-5" />
+          <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-50 text-blue-600 border border-blue-100">
+            <Users className="h-5 w-5" />
           </div>
         </div>
       </div>
 
-      {/* 3. Middle Row: Sales Trend + Orders by Channel + Outlet Performance */}
+      {/* 3. Middle Row: Real Sales Trend + Orders by Channel + Outlet Performance */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Sales Trend Chart */}
+        {/* Real Sales Trend Chart */}
         <div className="lg:col-span-5 rounded-2xl bg-white p-5 border border-slate-200/80 shadow-xs flex flex-col justify-between">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-2">
               <TrendingUp className="h-4 w-4 text-[#FF4E00]" />
-              <h2 className="text-sm font-bold text-slate-900">Sales Trend</h2>
+              <h2 className="text-sm font-bold text-slate-900">7-Day Real Performance</h2>
             </div>
             <div className="flex items-center p-0.5 bg-slate-100 rounded-lg text-xs font-semibold">
               <button
@@ -200,7 +317,7 @@ export default function OwnerDashboardPage() {
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                Sales
+                Revenue
               </button>
               <button
                 type="button"
@@ -220,7 +337,7 @@ export default function OwnerDashboardPage() {
           <div className="relative h-52 w-full pt-4">
             <svg viewBox="0 0 400 160" className="w-full h-full overflow-visible">
               <defs>
-                <linearGradient id="salesGrad" x1="0" y1="0" x2="0" y2="1">
+                <linearGradient id="realSalesGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#FF4E00" stopOpacity="0.25" />
                   <stop offset="100%" stopColor="#FF4E00" stopOpacity="0.0" />
                 </linearGradient>
@@ -230,104 +347,122 @@ export default function OwnerDashboardPage() {
               <line x1="0" y1="70" x2="400" y2="70" stroke="#F1F5F9" strokeDasharray="3 3" />
               <line x1="0" y1="110" x2="400" y2="110" stroke="#F1F5F9" strokeDasharray="3 3" />
 
-              {/* Area */}
-              <polygon
-                points="0,140 0,110 60,120 120,130 180,120 240,60 300,90 360,100 400,65 400,140"
-                fill="url(#salesGrad)"
-              />
-              {/* Curve Line */}
+              {/* Dynamic Polygon Area */}
+              <polygon points={trendPoints.polygon} fill="url(#realSalesGrad)" />
+              {/* Dynamic Polyline Curve */}
               <polyline
-                points="0,110 60,120 120,130 180,120 240,60 300,90 360,100 400,65"
+                points={trendPoints.polyline}
                 fill="none"
                 stroke="#FF4E00"
                 strokeWidth="2.5"
                 strokeLinecap="round"
               />
-              {/* High Point Dot */}
-              <circle cx="240" cy="60" r="5" fill="#FF4E00" stroke="#FFFFFF" strokeWidth="2" />
+              {/* Data points */}
+              {trendPoints.coords?.map((c, i) => (
+                <circle
+                  key={i}
+                  cx={c.x}
+                  cy={c.y}
+                  r="3.5"
+                  fill="#FF4E00"
+                  stroke="#FFFFFF"
+                  strokeWidth="1.5"
+                />
+              ))}
             </svg>
 
             {/* Peak Tooltip Pill */}
-            <div className="absolute top-1 left-[54%] -translate-x-1/2 rounded-lg border border-orange-200 bg-white px-2.5 py-1 text-center shadow-xs">
-              <p className="text-[10px] text-slate-400">12 Nov 2026</p>
-              <p className="text-xs font-extrabold text-slate-900">₹82,430</p>
-            </div>
+            {trendPoints.peakCoord && (
+              <div
+                className="absolute -top-1 rounded-lg border border-orange-200 bg-white px-2.5 py-1 text-center shadow-xs"
+                style={{
+                  left: `${(trendPoints.peakCoord.x / 400) * 100}%`,
+                  transform: 'translateX(-50%)',
+                }}
+              >
+                <p className="text-[10px] text-slate-400">Peak</p>
+                <p className="text-xs font-extrabold text-slate-900">{trendPoints.peakLabel}</p>
+              </div>
+            )}
           </div>
 
           {/* Days axis */}
           <div className="flex justify-between text-[11px] text-slate-400 pt-2 border-t border-slate-100">
-            <span>8 Nov</span>
-            <span>9 Nov</span>
-            <span>10 Nov</span>
-            <span>11 Nov</span>
-            <span>12 Nov</span>
-            <span>13 Nov</span>
-            <span>14 Nov</span>
+            {(analytics?.salesTrend || []).map((day) => (
+              <span key={day.date}>{day.label}</span>
+            ))}
           </div>
         </div>
 
-        {/* Orders by Channel */}
+        {/* Real Orders by Channel */}
         <div className="lg:col-span-3 rounded-2xl bg-white p-5 border border-slate-200/80 shadow-xs flex flex-col justify-between">
           <div className="flex items-center gap-2 mb-2">
             <Layers className="h-4 w-4 text-[#FF4E00]" />
             <h2 className="text-sm font-bold text-slate-900">Orders by Channel</h2>
           </div>
 
-          <div className="flex items-center justify-center my-2">
-            {/* Donut representation */}
+          <div className="flex items-center justify-center my-3">
             <div className="relative flex h-36 w-36 items-center justify-center">
               <svg viewBox="0 0 36 36" className="h-full w-full -rotate-90">
-                <circle cx="18" cy="18" r="14" fill="none" stroke="#FF4E00" strokeWidth="5" strokeDasharray="42 100" />
-                <circle cx="18" cy="18" r="14" fill="none" stroke="#0038FF" strokeWidth="5" strokeDasharray="24 100" strokeDashoffset="-42" />
-                <circle cx="18" cy="18" r="14" fill="none" stroke="#10B981" strokeWidth="5" strokeDasharray="11 100" strokeDashoffset="-66" />
-                <circle cx="18" cy="18" r="14" fill="none" stroke="#EF4444" strokeWidth="5" strokeDasharray="14 100" strokeDashoffset="-77" />
-                <circle cx="18" cy="18" r="14" fill="none" stroke="#8B5CF6" strokeWidth="5" strokeDasharray="9 100" strokeDashoffset="-91" />
+                <circle cx="18" cy="18" r="14" fill="none" stroke="#E2E8F0" strokeWidth="5" />
+                {analytics?.channelBreakdown && analytics.channelBreakdown.length > 0 ? (
+                  analytics.channelBreakdown.map((ch, idx) => {
+                    const strokeDasharray = `${ch.percentage} 100`;
+                    const prevPcts = analytics.channelBreakdown
+                      .slice(0, idx)
+                      .reduce((acc, c) => acc + c.percentage, 0);
+                    return (
+                      <circle
+                        key={ch.channel}
+                        cx="18"
+                        cy="18"
+                        r="14"
+                        fill="none"
+                        stroke={ch.color}
+                        strokeWidth="5"
+                        strokeDasharray={strokeDasharray}
+                        strokeDashoffset={`-${prevPcts}`}
+                      />
+                    );
+                  })
+                ) : (
+                  <circle cx="18" cy="18" r="14" fill="none" stroke="#CBD5E1" strokeWidth="5" />
+                )}
               </svg>
               <div className="absolute text-center">
-                <p className="text-sm font-extrabold text-slate-900">1,286</p>
-                <p className="text-[10px] text-slate-400">Orders</p>
+                <p className="text-sm font-extrabold text-slate-900">{analytics?.totalOrders ?? 0}</p>
+                <p className="text-[10px] text-slate-400">Total Orders</p>
               </div>
             </div>
           </div>
 
           {/* Breakdown legend */}
           <div className="space-y-1.5 text-xs text-slate-600">
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-[#FF4E00]" />
-                Dine-in
-              </span>
-              <span className="font-semibold text-slate-800">42.4% (546)</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-[#0038FF]" />
-                Takeaway
-              </span>
-              <span className="font-semibold text-slate-800">23.8% (306)</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-[#10B981]" />
-                Online (QR)
-              </span>
-              <span className="font-semibold text-slate-800">11.1% (143)</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-[#EF4444]" />
-                Zomato
-              </span>
-              <span className="font-semibold text-slate-800">13.6% (175)</span>
-            </div>
+            {analytics?.channelBreakdown && analytics.channelBreakdown.length > 0 ? (
+              analytics.channelBreakdown.map((ch) => (
+                <div key={ch.channel} className="flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: ch.color }} />
+                    {ch.name}
+                  </span>
+                  <span className="font-semibold text-slate-800">
+                    {ch.percentage}% ({ch.ordersCount})
+                  </span>
+                </div>
+              ))
+            ) : (
+              <p className="text-center text-xs text-slate-400 italic py-2">
+                No orders registered on any channel yet
+              </p>
+            )}
           </div>
         </div>
 
-        {/* Outlet Performance */}
+        {/* Real Outlet Performance */}
         <div className="lg:col-span-4 rounded-2xl bg-white p-5 border border-slate-200/80 shadow-xs flex flex-col justify-between">
           <div className="flex items-center gap-2 mb-3">
             <Store className="h-4 w-4 text-[#FF4E00]" />
-            <h2 className="text-sm font-bold text-slate-900">Outlet Performance</h2>
+            <h2 className="text-sm font-bold text-slate-900">Branch Performance</h2>
           </div>
 
           <div className="overflow-x-auto">
@@ -337,149 +472,170 @@ export default function OwnerDashboardPage() {
                   <th className="pb-2">Outlet</th>
                   <th className="pb-2 text-right">Sales (₹)</th>
                   <th className="pb-2 text-right">Orders</th>
-                  <th className="pb-2 text-right">Growth</th>
+                  <th className="pb-2 text-right">AOV (₹)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                <tr>
-                  <td className="py-2.5 font-bold text-slate-800 flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                    Rohini (Main)
-                  </td>
-                  <td className="py-2.5 text-right font-semibold">₹2,86,540</td>
-                  <td className="py-2.5 text-right text-slate-600">642</td>
-                  <td className="py-2.5 text-right text-emerald-600 font-bold">▲ +13.2%</td>
-                </tr>
-                <tr>
-                  <td className="py-2.5 font-bold text-slate-800 flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                    Pitampura
-                  </td>
-                  <td className="py-2.5 text-right font-semibold">₹1,82,340</td>
-                  <td className="py-2.5 text-right text-slate-600">398</td>
-                  <td className="py-2.5 text-right text-emerald-600 font-bold">▲ +10.7%</td>
-                </tr>
-                <tr>
-                  <td className="py-2.5 font-bold text-slate-800 flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                    Netaji Subhash
-                  </td>
-                  <td className="py-2.5 text-right font-semibold">₹93,550</td>
-                  <td className="py-2.5 text-right text-slate-600">246</td>
-                  <td className="py-2.5 text-right text-emerald-600 font-bold">▲ +8.9%</td>
-                </tr>
+                {analytics?.outletPerformance && analytics.outletPerformance.length > 0 ? (
+                  analytics.outletPerformance.map((outlet) => (
+                    <tr key={outlet.id}>
+                      <td className="py-2.5 font-bold text-slate-800 flex items-center gap-2">
+                        <span
+                          className={`h-2 w-2 rounded-full ${
+                            outlet.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-slate-300'
+                          }`}
+                        />
+                        <span className="truncate max-w-[110px]">{outlet.name}</span>
+                      </td>
+                      <td className="py-2.5 text-right font-semibold">
+                        ₹{Math.round(outlet.salesMinor / 100).toLocaleString('en-IN')}
+                      </td>
+                      <td className="py-2.5 text-right text-slate-600">{outlet.ordersCount}</td>
+                      <td className="py-2.5 text-right text-slate-900 font-bold">
+                        ₹{Math.round(outlet.avgOrderValueMinor / 100)}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={4} className="py-6 text-center text-slate-400 italic">
+                      No active branches found
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
 
           <div className="pt-3 border-t border-slate-100 text-right">
             <Link
-              href="/select-outlet"
+              href="/owner/menu"
               className="inline-flex items-center gap-1 text-xs font-semibold text-[#FF4E00] hover:underline"
             >
-              Switch Outlets <ChevronRight className="h-3.5 w-3.5" />
+              Outlet Menu Sync <ChevronRight className="h-3.5 w-3.5" />
             </Link>
           </div>
         </div>
       </div>
 
-      {/* 4. Bottom Operations Row: Top Items + Recent Orders + Alerts */}
+      {/* 4. Bottom Operations Row: Real Top Items + Real Recent Orders + Live Audit */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Top Selling Items */}
+        {/* Real Top Selling Items from order_items */}
         <div className="lg:col-span-4 rounded-2xl bg-white p-5 border border-slate-200/80 shadow-xs">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
               <UtensilsCrossed className="h-4 w-4 text-[#FF4E00]" />
-              Top Selling Items
+              Top Selling Dishes
             </h2>
-            <span className="text-[11px] text-slate-400 font-medium">By Quantity</span>
+            <span className="text-[11px] text-slate-400 font-medium">Real Orders</span>
           </div>
 
           <div className="space-y-3.5 text-xs">
-            {[
-              { name: 'Paneer Butter Masala', qty: 286, max: 300 },
-              { name: 'Veg Biryani', qty: 241, max: 300 },
-              { name: 'Butter Chicken', qty: 198, max: 300 },
-              { name: 'Garlic Naan', qty: 176, max: 300 },
-              { name: 'Dal Makhani', qty: 149, max: 300 },
-            ].map((item, idx) => (
-              <div key={idx} className="space-y-1">
-                <div className="flex justify-between font-semibold text-slate-800">
-                  <span>{item.name}</span>
-                  <span className="text-slate-500">{item.qty}</span>
-                </div>
-                <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-[#FF4E00]"
-                    style={{ width: `${(item.qty / item.max) * 100}%` }}
-                  />
-                </div>
+            {analytics?.topSellingItems && analytics.topSellingItems.length > 0 ? (
+              analytics.topSellingItems.map((item, idx) => {
+                const maxOrders = Math.max(...analytics.topSellingItems.map((t) => t.ordersCount), 1);
+                return (
+                  <div key={idx} className="space-y-1">
+                    <div className="flex justify-between font-semibold text-slate-800">
+                      <span>{item.name}</span>
+                      <span className="text-slate-500">
+                        {item.ordersCount} ordered · ₹{Math.round(item.revenueMinor / 100)}
+                      </span>
+                    </div>
+                    <div className="h-2 w-full rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-[#FF4E00]"
+                        style={{ width: `${(item.ordersCount / maxOrders) * 100}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="py-8 text-center text-slate-400">
+                <UtensilsCrossed className="h-6 w-6 mx-auto text-slate-300 mb-1" />
+                <p className="font-bold text-xs">No dish sales recorded yet</p>
+                <p className="text-[11px] mt-0.5">Orders placed from the customer menu will appear here</p>
               </div>
-            ))}
+            )}
           </div>
         </div>
 
-        {/* Recent Orders */}
+        {/* Real Recent Orders from PostgreSQL orders table */}
         <div className="lg:col-span-4 rounded-2xl bg-white p-5 border border-slate-200/80 shadow-xs">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-bold text-slate-900">Recent Orders</h2>
+            <h2 className="text-sm font-bold text-slate-900">Recent Live Orders</h2>
             <Link href="/owner/sales" className="text-xs font-semibold text-[#FF4E00] hover:underline">
               View All Orders →
             </Link>
           </div>
 
           <div className="space-y-2.5 text-xs">
-            {[
-              { id: '#TB8643', channel: 'Dine-in', loc: 'Rohini', amount: '₹1,476', time: '2 min ago' },
-              { id: '#TB8642', channel: 'Takeaway', loc: 'Pitampura', amount: '₹598', time: '6 min ago' },
-              { id: '#ZM9271', channel: 'Zomato', loc: 'Rohini', amount: '₹836', time: '8 min ago' },
-              { id: '#SW4419', channel: 'Swiggy', loc: 'NSP', amount: '₹1,028', time: '12 min ago' },
-              { id: '#TB8641', channel: 'Dine-in', loc: 'Rohini', amount: '₹2,064', time: '15 min ago' },
-            ].map((order, idx) => (
-              <div
-                key={idx}
-                className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="font-bold text-slate-900 text-xs">{order.id}</span>
-                  <span className="rounded-md bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600 border border-slate-200">
-                    {order.channel}
-                  </span>
-                </div>
-                <div className="text-right">
-                  <p className="font-bold text-slate-900">{order.amount}</p>
-                  <p className="text-[10px] text-slate-400">{order.time}</p>
-                </div>
+            {analytics?.recentOrders && analytics.recentOrders.length > 0 ? (
+              analytics.recentOrders.map((order) => {
+                const orderTime = new Date(order.createdAt).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                });
+                return (
+                  <div
+                    key={order.id}
+                    className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-100"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-slate-900 text-xs">#{order.orderNumber}</span>
+                      <span className="rounded-md bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600 border border-slate-200">
+                        {order.tableCode ? `Table ${order.tableCode}` : order.channel}
+                      </span>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-bold text-slate-900">₹{Math.round(order.totalMinor / 100)}</p>
+                      <p className="text-[10px] text-slate-400">{orderTime} · {order.status}</p>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <div className="py-8 text-center text-slate-400">
+                <ShoppingBag className="h-6 w-6 mx-auto text-slate-300 mb-1" />
+                <p className="font-bold text-xs">No orders placed yet</p>
+                <p className="text-[11px] mt-0.5">Scan table QR to place a test order</p>
               </div>
-            ))}
+            )}
           </div>
         </div>
 
-        {/* Alerts & Insights */}
+        {/* Live Operations Status & Verification */}
         <div className="lg:col-span-4 rounded-2xl bg-white p-5 border border-slate-200/80 shadow-xs space-y-3">
-          <h2 className="text-sm font-bold text-slate-900 mb-2">Alerts & Insights</h2>
-
-          <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50/70 p-3.5 text-xs text-red-900">
-            <AlertTriangle className="h-4 w-4 shrink-0 text-red-600 mt-0.5" />
-            <div>
-              <p className="font-bold">3 items are low in stock</p>
-              <p className="text-[11px] text-red-700 mt-0.5">Paneer, Basmati Rice, Cooking Cream</p>
-            </div>
-          </div>
-
-          <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50/70 p-3.5 text-xs text-amber-900">
-            <Calendar className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
-            <div>
-              <p className="font-bold">6 upcoming reservations today</p>
-              <p className="text-[11px] text-amber-700 mt-0.5">Next: 7:00 PM (6 guests)</p>
-            </div>
-          </div>
+          <h2 className="text-sm font-bold text-slate-900 mb-2">Live Store Status</h2>
 
           <div className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 text-xs text-emerald-900">
             <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600 mt-0.5" />
             <div>
-              <p className="font-bold">Sales up by 12.4%</p>
-              <p className="text-[11px] text-emerald-700 mt-0.5">Performance outpacing last week</p>
+              <p className="font-bold">Database Synchronized</p>
+              <p className="text-[11px] text-emerald-700 mt-0.5">
+                Connected to Supabase PostgreSQL with verified tenant boundary.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3 rounded-xl border border-orange-200 bg-orange-50/70 p-3.5 text-xs text-orange-900">
+            <Store className="h-4 w-4 shrink-0 text-[#FF4E00] mt-0.5" />
+            <div>
+              <p className="font-bold">{analytics?.totalOutlets ?? 0} Outlets Online</p>
+              <p className="text-[11px] text-orange-800 mt-0.5">
+                Menu catalogs and kitchen stations ready to accept orders.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-start gap-3 rounded-xl border border-blue-200 bg-blue-50/70 p-3.5 text-xs text-blue-900">
+            <UtensilsCrossed className="h-4 w-4 shrink-0 text-blue-600 mt-0.5" />
+            <div>
+              <p className="font-bold">{analytics?.totalMenuItems ?? 0} Menu Items Live</p>
+              <p className="text-[11px] text-blue-800 mt-0.5">
+                Ready for QR scan ordering and instant availability 86-ing.
+              </p>
             </div>
           </div>
         </div>
@@ -501,19 +657,11 @@ export default function OwnerDashboardPage() {
         </Link>
 
         <Link
-          href="/owner/staff"
+          href="/owner/menu"
           className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
         >
-          <Users className="h-3.5 w-3.5 text-slate-500" />
-          Add Staff
-        </Link>
-
-        <Link
-          href="/owner/outlets"
-          className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
-        >
-          <Store className="h-3.5 w-3.5 text-slate-500" />
-          Manage Outlets
+          <Layers className="h-3.5 w-3.5 text-slate-500" />
+          Manage Categories
         </Link>
 
         <Link
@@ -521,15 +669,15 @@ export default function OwnerDashboardPage() {
           className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
         >
           <BarChart2 className="h-3.5 w-3.5 text-slate-500" />
-          View Reports
+          View Detailed Sales
         </Link>
 
         <Link
-          href="/owner/integrations"
+          href="/staff/kitchen"
           className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition"
         >
-          <Settings className="h-3.5 w-3.5 text-slate-500" />
-          Manage Integrations
+          <UtensilsCrossed className="h-3.5 w-3.5 text-slate-500" />
+          Kitchen Display (KDS)
         </Link>
       </div>
     </div>

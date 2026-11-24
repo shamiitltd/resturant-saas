@@ -17,10 +17,10 @@ import type {
 import type { TenantContextDto } from '@restaurant-saas/contracts';
 
 const ALLOWED_TRANSITIONS: Record<OrderLifecycleStatus, OrderLifecycleStatus[]> = {
-  PLACED: ['ACCEPTED', 'REJECTED', 'CANCELLED'],
+  PLACED: ['ACCEPTED', 'PREPARING', 'REJECTED', 'CANCELLED'],
   ACCEPTED: ['PREPARING', 'CANCELLED'],
-  PREPARING: ['READY'],
-  READY: ['SERVED', 'COMPLETED'], // COMPLETED is valid for self-service / counter collection
+  PREPARING: ['READY', 'CANCELLED'],
+  READY: ['SERVED', 'COMPLETED', 'CANCELLED'],
   SERVED: ['COMPLETED'],
   COMPLETED: [],
   REJECTED: [],
@@ -94,6 +94,32 @@ export class StaffService {
   private hasPermission(tenantContext: TenantContextDto, permissionCode: string): boolean {
     if (tenantContext.actorType === 'PLATFORM_ADMIN') return true;
     if (tenantContext.roleCodes.includes('OWNER') || tenantContext.roleCodes.includes('MANAGER')) return true;
+    if (
+      tenantContext.roleCodes.includes('CHEF') &&
+      (permissionCode.startsWith('kitchen.') ||
+        permissionCode === 'orders.update_status' ||
+        permissionCode === 'orders.view' ||
+        permissionCode === 'orders.accept' ||
+        permissionCode === 'orders.cancel')
+    ) {
+      return true;
+    }
+    if (
+      tenantContext.roleCodes.includes('WAITER') &&
+      (permissionCode.startsWith('waiter.') ||
+        permissionCode === 'orders.update_status' ||
+        permissionCode === 'orders.view' ||
+        permissionCode === 'orders.complete')
+    ) {
+      return true;
+    }
+    if (
+      tenantContext.roleCodes.includes('RECEPTIONIST') &&
+      (permissionCode.startsWith('orders.') ||
+        permissionCode.startsWith('billing.'))
+    ) {
+      return true;
+    }
     return tenantContext.permissions.includes(permissionCode);
   }
 
@@ -112,6 +138,7 @@ export class StaffService {
              o.status, o.currency, o.subtotal_minor, o.tax_minor, o.total_minor,
              o.chef_eta_minutes, o.eta_updated_at, o.special_instructions,
              o.rejection_reason, o.cancellation_reason,
+             (SELECT notes FROM order_status_events ose WHERE ose.order_id = o.id AND ose.to_status = 'COMPLETED' ORDER BY ose.occurred_at DESC LIMIT 1) as settlement_notes,
              o.waiter_id, p.full_name as waiter_name,
              loc.service_mode,
              o.created_at, o.updated_at
@@ -194,6 +221,7 @@ export class StaffService {
       specialInstructions: row.special_instructions || undefined,
       rejectionReason: row.rejection_reason || undefined,
       cancellationReason: row.cancellation_reason || undefined,
+      settlementNotes: row.settlement_notes || undefined,
       waiterId: row.waiter_id || undefined,
       waiterName: row.waiter_name || undefined,
       serviceMode: row.service_mode || 'TABLE_SERVICE',
@@ -217,6 +245,7 @@ export class StaffService {
               o.status, o.currency, o.subtotal_minor, o.tax_minor, o.total_minor,
               o.chef_eta_minutes, o.eta_updated_at, o.special_instructions,
               o.rejection_reason, o.cancellation_reason,
+              (SELECT notes FROM order_status_events ose WHERE ose.order_id = o.id AND ose.to_status = 'COMPLETED' ORDER BY ose.occurred_at DESC LIMIT 1) as settlement_notes,
               o.waiter_id, p.full_name as waiter_name,
               loc.service_mode,
               o.tenant_id, o.location_id,
@@ -278,6 +307,7 @@ export class StaffService {
       specialInstructions: row.special_instructions || undefined,
       rejectionReason: row.rejection_reason || undefined,
       cancellationReason: row.cancellation_reason || undefined,
+      settlementNotes: row.settlement_notes || undefined,
       waiterId: row.waiter_id || undefined,
       waiterName: row.waiter_name || undefined,
       serviceMode: row.service_mode || 'TABLE_SERVICE',
@@ -309,7 +339,7 @@ export class StaffService {
       throw new BadRequestException('Target order status is required');
     }
 
-    return this.db.transaction(async (client) => {
+    const txResult = await this.db.transaction(async (client) => {
       // 1. Lock Order Row to prevent concurrent conflicting state transitions
       const lockRes = await client.query<{
         id: string;
@@ -346,17 +376,10 @@ export class StaffService {
 
       // Check if already in target state (Idempotent success)
       if (currentStatus === targetStatus) {
-        const order = await this.getStaffOrderById(tenantContext, orderId);
         return {
-          order,
-          event: {
-            fromStatus: currentStatus,
-            toStatus: targetStatus,
-            actorType: tenantContext.actorType,
-            actorId: tenantContext.actorId,
-            occurredAt: new Date().toISOString(),
-            notes: dto.notes || 'Idempotent status confirmation',
-          },
+          fromStatus: currentStatus,
+          occurredAt: new Date(),
+          eventNotes: dto.notes || 'Idempotent status confirmation',
         };
       }
 
@@ -426,13 +449,13 @@ export class StaffService {
 
       await client.query(
         `UPDATE orders
-         SET status = $1,
-             rejection_reason = COALESCE($2, rejection_reason),
-             cancellation_reason = COALESCE($3, cancellation_reason),
-             chef_eta_minutes = COALESCE($4, chef_eta_minutes),
-             served_at = CASE WHEN $1 = 'SERVED' OR ($1 = 'COMPLETED' AND served_at IS NULL) THEN now() ELSE served_at END,
+         SET status = $1::varchar,
+             rejection_reason = COALESCE($2::text, rejection_reason),
+             cancellation_reason = COALESCE($3::text, cancellation_reason),
+             chef_eta_minutes = COALESCE($4::int, chef_eta_minutes),
+             served_at = CASE WHEN $1::varchar = 'SERVED' OR ($1::varchar = 'COMPLETED' AND served_at IS NULL) THEN now() ELSE served_at END,
              updated_at = now()
-         WHERE id = $5`,
+         WHERE id = $5::uuid`,
         updateParams
       );
 
@@ -443,7 +466,7 @@ export class StaffService {
         occurred_at: Date;
       }>(
         `INSERT INTO order_status_events (order_id, from_status, to_status, actor_type, actor_id, notes)
-         VALUES ($1, $2, $3, $4, $5, $6)
+         VALUES ($1::uuid, $2::varchar, $3::varchar, $4::varchar, $5::uuid, $6::text)
          RETURNING id, occurred_at`,
         [
           orderId,
@@ -473,19 +496,25 @@ export class StaffService {
         ]
       );
 
-      const updatedOrder = await this.getStaffOrderById(tenantContext, orderId);
       return {
-        order: updatedOrder,
-        event: {
-          fromStatus: currentStatus,
-          toStatus: targetStatus,
-          actorType: tenantContext.actorType,
-          actorId: tenantContext.actorId,
-          occurredAt: new Date(eventRes.rows[0].occurred_at).toISOString(),
-          notes: eventNotes,
-        },
+        fromStatus: currentStatus,
+        occurredAt: eventRes.rows[0].occurred_at,
+        eventNotes,
       };
     });
+
+    const updatedOrder = await this.getStaffOrderById(tenantContext, orderId);
+    return {
+      order: updatedOrder,
+      event: {
+        fromStatus: txResult.fromStatus,
+        toStatus: targetStatus,
+        actorType: tenantContext.actorType,
+        actorId: tenantContext.actorId,
+        occurredAt: new Date(txResult.occurredAt).toISOString(),
+        notes: txResult.eventNotes,
+      },
+    };
   }
 
   /**
@@ -505,7 +534,7 @@ export class StaffService {
       throw new BadRequestException('Chef ETA must be an integer between 1 and 180 minutes');
     }
 
-    return this.db.transaction(async (client) => {
+    await this.db.transaction(async (client) => {
       const lock = await client.query<{
         id: string;
         tenant_id: string;
@@ -535,18 +564,18 @@ export class StaffService {
       // Update ETA
       await client.query(
         `UPDATE orders
-         SET chef_eta_minutes = $1,
+         SET chef_eta_minutes = $1::int,
              eta_updated_at = now(),
-             eta_set_by = $2,
+             eta_set_by = $2::uuid,
              updated_at = now()
-         WHERE id = $3`,
+         WHERE id = $3::uuid`,
         [eta, tenantContext.actorId || null, orderId]
       );
 
       // Audit status event for ETA update
       await client.query(
         `INSERT INTO order_status_events (order_id, from_status, to_status, actor_type, actor_id, notes)
-         VALUES ($1, $2, $2, $3, $4, $5)`,
+         VALUES ($1::uuid, $2::varchar, $2::varchar, $3::varchar, $4::uuid, $5::text)`,
         [
           orderId,
           order.status,
@@ -570,9 +599,9 @@ export class StaffService {
           }),
         ]
       );
-
-      return this.getStaffOrderById(tenantContext, orderId);
     });
+
+    return this.getStaffOrderById(tenantContext, orderId);
   }
 
   /**
@@ -586,7 +615,7 @@ export class StaffService {
       throw new ForbiddenException('Missing permission to perform waiter order pickup');
     }
 
-    return this.db.transaction(async (client) => {
+    await this.db.transaction(async (client) => {
       const lock = await client.query<{
         id: string;
         tenant_id: string;
@@ -612,21 +641,21 @@ export class StaffService {
 
       await client.query(
         `UPDATE orders
-         SET waiter_id = $1,
+         SET waiter_id = $1::uuid,
              picked_up_at = now(),
              updated_at = now()
-         WHERE id = $2`,
+         WHERE id = $2::uuid`,
         [tenantContext.actorId || null, orderId]
       );
 
       await client.query(
         `INSERT INTO order_status_events (order_id, from_status, to_status, actor_type, actor_id, notes)
-         VALUES ($1, 'READY', 'READY', $2, $3, 'Order picked up by waiter for delivery to table')`,
+         VALUES ($1::uuid, 'READY', 'READY', $2::varchar, $3::uuid, 'Order picked up by waiter for delivery to table')`,
         [orderId, tenantContext.actorType, tenantContext.actorId || null]
       );
-
-      return this.getStaffOrderById(tenantContext, orderId);
     });
+
+    return this.getStaffOrderById(tenantContext, orderId);
   }
 
   /**

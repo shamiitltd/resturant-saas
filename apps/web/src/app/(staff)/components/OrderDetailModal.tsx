@@ -11,13 +11,15 @@ import {
   Receipt,
   User,
   ShoppingBag,
+  Banknote,
+  QrCode,
 } from 'lucide-react';
 import type { StaffOrderDto } from '@restaurant-saas/contracts';
 
 interface OrderDetailModalProps {
   order: StaffOrderDto;
   onClose: () => void;
-  onUpdateStatus: (status: any) => Promise<void>;
+  onUpdateStatus: (status: any, notes?: string) => Promise<void>;
   onOpenEtaModal: () => void;
   onOpenCancelModal: (action: 'REJECT' | 'CANCEL') => void;
 }
@@ -29,6 +31,8 @@ export default function OrderDetailModal({
   onOpenEtaModal,
   onOpenCancelModal,
 }: OrderDetailModalProps) {
+  const [isUpiInputOpen, setIsUpiInputOpen] = React.useState(false);
+  const [upiRef, setUpiRef] = React.useState('');
   const getElapsedBadge = (minutes: number) => {
     if (minutes < 10) {
       return 'bg-emerald-100 text-emerald-800 border-emerald-200';
@@ -132,6 +136,21 @@ export default function OrderDetailModal({
             <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">
               <span className="font-bold">Reason for {order.status}: </span>
               <span>{order.rejectionReason || order.cancellationReason}</span>
+            </div>
+          )}
+
+          {/* Payment & Settlement Note */}
+          {order.settlementNotes && (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-xs flex items-center justify-between">
+              <div>
+                <span className="font-bold text-emerald-950 uppercase tracking-wider text-[10px]">
+                  Payment Verified
+                </span>
+                <p className="font-semibold text-emerald-900 mt-0.5">{order.settlementNotes}</p>
+              </div>
+              <span className="rounded-md bg-emerald-600 text-white px-2 py-0.5 font-black text-[10px]">
+                SETTLED
+              </span>
             </div>
           )}
 
@@ -282,13 +301,52 @@ export default function OrderDetailModal({
             )}
 
             {order.status === 'SERVED' && (
-              <button
-                type="button"
-                onClick={() => onUpdateStatus('COMPLETED')}
-                className="rounded-xl bg-slate-800 px-4 py-2 text-xs font-bold text-white hover:bg-slate-900 shadow-sm"
-              >
-                Mark Completed
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                {!isUpiInputOpen ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => onUpdateStatus('COMPLETED', 'PAID_CASH: Cash received at counter')}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-emerald-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-emerald-700 shadow-sm"
+                    >
+                      <Banknote className="h-4 w-4" />
+                      <span>Collect Cash</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsUpiInputOpen(true)}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-purple-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-purple-700 shadow-sm"
+                    >
+                      <QrCode className="h-4 w-4" />
+                      <span>Verify UPI QR</span>
+                    </button>
+                  </>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      placeholder="UPI Ref / UTR (optional)"
+                      value={upiRef}
+                      onChange={(e) => setUpiRef(e.target.value)}
+                      className="rounded-xl border border-slate-300 px-3 py-1.5 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => onUpdateStatus('COMPLETED', `PAID_UPI: ${upiRef.trim() || 'Verified'}`)}
+                      className="rounded-xl bg-purple-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-purple-700 shadow-sm"
+                    >
+                      Confirm UPI
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsUpiInputOpen(false)}
+                      className="text-xs text-slate-500 hover:text-slate-700 px-1"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
