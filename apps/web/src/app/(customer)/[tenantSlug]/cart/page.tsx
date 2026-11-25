@@ -40,6 +40,7 @@ function CartCheckoutContent() {
   const [customerPhone, setCustomerPhone] = useState('');
   const [orderNotes, setOrderNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [redirectingOrderId, setRedirectingOrderId] = useState<string | null>(null);
   const [connectingTable, setConnectingTable] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -111,16 +112,49 @@ function CartCheckoutContent() {
         body: JSON.stringify(payload),
       });
 
-      // Clear cart upon successful order creation
+      if (!orderResult?.orderId) {
+        throw new Error('Order was created but no order ID was returned.');
+      }
+
+      const targetPath = `/${tenantSlug}/order/${orderResult.orderId}`;
+
+      // Show redirecting state before clearing cart so "Your Cart is Empty" never flashes
+      setRedirectingOrderId(orderResult.orderId);
       clearCart();
 
-      // Navigate to order tracking page
-      router.push(`/${tenantSlug}/order/${orderResult.orderId}`);
+      // Navigate to order tracking page with hard-navigation fallback if soft transition stalls
+      router.replace(targetPath);
+      setTimeout(() => {
+        if (typeof window !== 'undefined' && !window.location.pathname.includes(`/order/${orderResult.orderId}`)) {
+          window.location.assign(targetPath);
+        }
+      }, 1200);
     } catch (err: any) {
       setErrorMessage(err.message || 'Failed to submit order. Please ask staff for assistance.');
       setIsSubmitting(false);
     }
   };
+
+  if (redirectingOrderId) {
+    return (
+      <div className="mx-auto flex min-h-[70vh] max-w-lg flex-col items-center justify-center px-4 text-center">
+        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
+          <CheckCircle2 className="h-8 w-8" />
+        </div>
+        <h2 className="mt-4 font-extrabold text-slate-900 text-xl">Order Sent to Kitchen!</h2>
+        <p className="mt-1 text-sm text-slate-500">
+          Redirecting you to live kitchen tracking and your consolidated bill...
+        </p>
+        <Loader2 className="mt-5 h-6 w-6 animate-spin text-orange-600" />
+        <Link
+          href={`/${tenantSlug}/order/${redirectingOrderId}`}
+          className="mt-6 inline-flex items-center gap-2 rounded-xl bg-orange-600 px-5 py-2.5 font-bold text-sm text-white shadow-md shadow-orange-200 transition hover:bg-orange-700"
+        >
+          <span>Open Live Order Tracker</span>
+        </Link>
+      </div>
+    );
+  }
 
   if (items.length === 0) {
     return (

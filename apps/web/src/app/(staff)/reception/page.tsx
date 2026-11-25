@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 import {
   ClipboardList,
   Clock,
@@ -19,7 +20,11 @@ import {
   Wallet,
 } from 'lucide-react';
 import { fetchWithAuth } from '@/lib/api';
-import type { StaffOrderDto, OrderLifecycleStatus } from '@restaurant-saas/contracts';
+import type {
+  StaffOrderDto,
+  OrderLifecycleStatus,
+  StaffBillingQueueResponseDto,
+} from '@restaurant-saas/contracts';
 import OrderDetailModal from '../components/OrderDetailModal';
 import SetEtaModal from '../components/SetEtaModal';
 import CancelOrderModal from '../components/CancelOrderModal';
@@ -37,6 +42,7 @@ const STATUS_FILTERS = [
 
 export default function ReceptionDashboardPage() {
   const [orders, setOrders] = useState<StaffOrderDto[]>([]);
+  const [billingQueue, setBillingQueue] = useState<StaffBillingQueueResponseDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,8 +61,20 @@ export default function ReceptionDashboardPage() {
     else setRefreshing(true);
 
     try {
-      const data = await fetchWithAuth<StaffOrderDto[]>('/v1/staff/orders');
-      
+      const [ordersRes, billingRes] = await Promise.allSettled([
+        fetchWithAuth<StaffOrderDto[]>('/v1/staff/orders'),
+        fetchWithAuth<StaffBillingQueueResponseDto>('/v1/staff/billing/queue'),
+      ]);
+
+      if (ordersRes.status === 'rejected') {
+        throw ordersRes.reason;
+      }
+
+      const data = ordersRes.value;
+      if (billingRes.status === 'fulfilled') {
+        setBillingQueue(billingRes.value);
+      }
+
       // Check if new PLACED orders arrived compared to previous state
       setOrders((prev) => {
         const prevPlacedIds = new Set(prev.filter((o) => o.status === 'PLACED').map((o) => o.id));
@@ -135,24 +153,25 @@ export default function ReceptionDashboardPage() {
     (o) => o.status !== 'COMPLETED' && o.status !== 'CANCELLED' && o.status !== 'REJECTED'
   ).length;
 
-  // Financial & Payment Tracking Metrics
+  // Financial & Payment Tracking Metrics (Authoritative Phase E Billing + Orders)
   const nonCancelledOrders = orders.filter((o) => o.status !== 'CANCELLED' && o.status !== 'REJECTED');
   const totalRevenueMinor = nonCancelledOrders.reduce((sum, o) => sum + o.totalMinor, 0);
 
-  const completedOrders = orders.filter((o) => o.status === 'COMPLETED');
-  const completedRevenueMinor = completedOrders.reduce((sum, o) => sum + o.totalMinor, 0);
+  const completedRevenueMinor = billingQueue
+    ? billingQueue.summary.totalSalesMinor
+    : orders.filter((o) => o.status === 'COMPLETED').reduce((sum, o) => sum + o.totalMinor, 0);
 
-  const cashCollectedMinor = completedOrders
-    .filter((o) => o.settlementNotes?.includes('PAID_CASH') || o.settlementNotes?.toLowerCase().includes('cash'))
-    .reduce((sum, o) => sum + o.totalMinor, 0);
+  const cashCollectedMinor = billingQueue ? billingQueue.summary.cashCollectedMinor : 0;
 
-  const upiCollectedMinor = completedOrders
-    .filter((o) => o.settlementNotes?.includes('PAID_UPI') || o.settlementNotes?.toLowerCase().includes('upi'))
-    .reduce((sum, o) => sum + o.totalMinor, 0);
+  const upiCollectedMinor = billingQueue ? billingQueue.summary.upiCollectedMinor : 0;
 
-  const pendingSettlementMinor = orders
-    .filter((o) => o.status === 'SERVED' || o.status === 'READY' || o.status === 'PREPARING' || o.status === 'ACCEPTED' || o.status === 'PLACED')
-    .reduce((sum, o) => sum + o.totalMinor, 0);
+  const pendingSettlementMinor = billingQueue
+    ? billingQueue.sessions
+        .filter((s) => s.bill?.status !== 'VERIFIED_PAID')
+        .reduce((sum, s) => sum + (s.bill ? s.bill.totalMinor : s.estimatedTotalMinor), 0)
+    : orders
+        .filter((o) => o.status === 'SERVED' || o.status === 'READY' || o.status === 'PREPARING' || o.status === 'ACCEPTED' || o.status === 'PLACED')
+        .reduce((sum, o) => sum + o.totalMinor, 0);
 
   // Filtered orders
   const filteredOrders = orders.filter((order) => {
@@ -368,8 +387,15 @@ export default function ReceptionDashboardPage() {
           ))}
         </div>
 
-        {/* Search & Refresh */}
+        {/* Search, Billing Link & Refresh */}
         <div className="flex items-center gap-2">
+          <Link
+            href="/staff/billing"
+            className="inline-flex items-center gap-1.5 rounded-xl bg-[#EF5301] px-3.5 py-2 text-xs font-bold text-white shadow-xs hover:bg-[#d94900] transition whitespace-nowrap"
+          >
+            <QrCode className="h-3.5 w-3.5" />
+            <span>Billing &amp; Payments</span>
+          </Link>
           <div className="relative flex-1 md:w-64">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
             <input

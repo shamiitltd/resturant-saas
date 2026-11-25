@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { ChefHat, ClipboardList, User, Bell, MapPin, LogOut } from 'lucide-react';
+import { ChefHat, ClipboardList, User, Receipt, MapPin, LogOut } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { fetchWithAuth } from '@/lib/api';
 import type { AuthMeResponseDto } from '@restaurant-saas/contracts';
@@ -20,6 +20,12 @@ const ALL_STATIONS: StationLink[] = [
     href: '/staff/reception',
     label: 'Reception',
     icon: ClipboardList,
+    roles: ['RECEPTIONIST', 'MANAGER', 'OWNER', 'PLATFORM_ADMIN'],
+  },
+  {
+    href: '/staff/billing',
+    label: 'Billing',
+    icon: Receipt,
     roles: ['RECEPTIONIST', 'MANAGER', 'OWNER', 'PLATFORM_ADMIN'],
   },
   {
@@ -135,6 +141,7 @@ export default function StaffLayout({
   const isCurrentActive = (href: string) => {
     if (href === '/staff/kitchen' && (pathname === '/kitchen' || pathname === '/staff/kitchen')) return true;
     if (href === '/staff/reception' && (pathname === '/reception' || pathname === '/staff/reception')) return true;
+    if (href === '/staff/billing' && (pathname === '/billing' || pathname === '/staff/billing')) return true;
     if (href === '/staff/waiter' && (pathname === '/waiter' || pathname === '/staff/waiter')) return true;
     return pathname.startsWith(href);
   };

@@ -60,3 +60,14 @@ References 104–113 (confirmed from the current design sequence):
 | `02-staff/13-kitchen-display-system.png` | KDS High-Contrast Cooking View | Kitchen Staff | `/staff/kitchen` | `GET /v1/staff/orders`, `PATCH /v1/staff/orders/:id/eta` | **Implemented** |
 | `02-staff/14-waiter-service-dashboard.png` | Waiter Service Dashboard | Waiter | `/staff/waiter` | `GET /v1/staff/orders`, `PATCH /v1/staff/orders/:id/served` | **Implemented** |
 | `02-staff/18-order-cancellation-confirmation.png` | Order Cancellation / Rejection Modal | Staff | Reusable Staff Modal | `PATCH /v1/staff/orders/:id/status` | **Implemented** |
+
+## Implemented Restaurant Billing & Payment Verification Screens (Phase E)
+| Ref/Asset | Screen Name | Role | Route | Backend API Dependency | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `02-staff/05-billing-invoices.png` | Billing & Invoices Workspace | Receptionist / Manager / Owner | `/staff/billing` | `GET /v1/staff/billing/queue`, `POST /v1/staff/bills/:id/payments` | **Implemented** |
+| `02-staff/15-table-session-multiple-orders.png` | Table Session Multi-Order Consolidated View | Receptionist / Manager / Owner | `/staff/billing` | `GET /v1/staff/billing/queue`, `POST /v1/staff/table-sessions/:id/bills` | **Implemented** |
+| `02-staff/16-consolidated-bill-payment-verification.png` | Consolidated Bill & Restaurant UPI QR Verification | Receptionist / Manager / Owner | `/staff/billing` | `POST /v1/staff/table-sessions/:id/bills`, `POST /v1/staff/payments/:id/verify` | **Implemented** |
+| `02-staff/19-payment-verification-invoice-printing.png` | Payment Verification Stepper & Invoice Preview Modal | Receptionist / Manager / Owner | Modal in `/staff/billing` | `POST /v1/staff/payments/:id/verify`, `GET /v1/staff/bills/:id` | **Implemented** |
+| `03-owner/11-restaurant-profile-settings.png` | Branch Billing & UPI Payment Settings | Owner / Manager | `/owner/settings` | `GET /v1/owner/payment-settings`, `PUT /v1/owner/payment-settings` | **Implemented** |
+| `03-owner/23-branch-specific-configuration.png` | Outlet Payment & Tax Configuration | Owner / Manager | `/owner/settings` | `GET /v1/owner/payment-settings`, `PUT /v1/owner/payment-settings` | **Implemented** |
+| `01-customer/04-order-tracking-desktop.png` | Customer Consolidated Bill & UPI Reference Submission | Diner | `/[tenantSlug]/order/[orderId]` | `GET /v1/customer/sessions/:token/bill`, `POST /v1/customer/sessions/:token/bill/payment-reference` | **Implemented** |

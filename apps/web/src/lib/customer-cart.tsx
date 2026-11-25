@@ -1,6 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useMemo } from 'react';
+import { publicFetch } from '@/lib/api';
 
 export interface CartModifier {
   id: string;
@@ -71,6 +72,7 @@ export function CustomerCartProvider({
   tenantSlug?: string;
 }) {
   const [session, setSessionState] = useState<TableSessionData | null>(null);
+  const [tenantTaxRate, setTenantTaxRate] = useState<number | null>(null);
   const [items, setItems] = useState<CartItem[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -78,12 +80,13 @@ export function CustomerCartProvider({
   const sessionKey = 'saas_table_session';
   const cartKey = tenantSlug ? `saas_customer_cart_${tenantSlug}` : 'saas_customer_cart';
 
-  // Load from local storage
+  // Load from local storage and sync authoritative tenant tax rate
   useEffect(() => {
     try {
       const storedSession = localStorage.getItem(sessionKey);
       if (storedSession) {
-        setSessionState(JSON.parse(storedSession));
+        const parsed = JSON.parse(storedSession);
+        setSessionState(parsed);
       }
       const storedCart = localStorage.getItem(cartKey);
       if (storedCart) {
@@ -94,7 +97,31 @@ export function CustomerCartProvider({
     } finally {
       setIsLoaded(true);
     }
-  }, [cartKey]);
+
+    // Refresh live tax rate from public menu if tenantSlug is known
+    if (tenantSlug) {
+      publicFetch<{ taxRatePercent?: number | null }>(`/v1/public/menu/${tenantSlug}`)
+        .then((menuData) => {
+          if (menuData && menuData.taxRatePercent !== undefined) {
+            const numRate = menuData.taxRatePercent !== null ? Number(menuData.taxRatePercent) : null;
+            setTenantTaxRate(numRate);
+            setSessionState((prev) => {
+              if (!prev) return prev;
+              const updated = { ...prev, taxRatePercent: numRate };
+              try {
+                localStorage.setItem(sessionKey, JSON.stringify(updated));
+              } catch {
+                // ignore
+              }
+              return updated;
+            });
+          }
+        })
+        .catch(() => {
+          // ignore background fetch failures
+        });
+    }
+  }, [cartKey, tenantSlug]);
 
   // Persist cart changes
   useEffect(() => {
@@ -203,8 +230,11 @@ export function CustomerCartProvider({
 
   const { subtotalMinor, taxMinor, totalMinor, totalItemCount, taxRatePercent } = useMemo(() => {
     const subtotal = items.reduce((sum, i) => sum + i.itemTotalMinor, 0);
-    const rate = session?.taxRatePercent !== undefined ? session.taxRatePercent : null;
-    const tax = rate !== null ? Math.round(subtotal * (rate / 100)) : 0;
+    const rate =
+      session?.taxRatePercent !== undefined && session?.taxRatePercent !== null
+        ? session.taxRatePercent
+        : tenantTaxRate;
+    const tax = rate !== null && rate > 0 ? Math.round(subtotal * (rate / 100)) : 0;
     const total = subtotal + tax;
     const count = items.reduce((sum, i) => sum + i.quantity, 0);
     return {
@@ -214,7 +244,7 @@ export function CustomerCartProvider({
       totalItemCount: count,
       taxRatePercent: rate,
     };
-  }, [items, session]);
+  }, [items, session, tenantTaxRate]);
 
   return (
     <CartContext.Provider

@@ -31,6 +31,17 @@ Use this document to connect every numbered UI reference to product behavior and
 | `02-staff/14-waiter-service-dashboard.png` | Waiter Station Dashboard | Waiter | `/staff/waiter` | `FR-STA-07` | `PATCH /v1/staff/orders/:id/served` | `waiter.serve` | **Implemented** |
 | `02-staff/18-order-cancellation-confirmation.png` | Order Cancellation / Rejection | Staff | Modal | `FR-STA-04` | `PATCH /v1/staff/orders/:id/status` | `orders.cancel` | **Implemented** |
 
+## Phase E: Restaurant Billing & Direct Payment Verification Mapping
+| Asset Path | Screen Name | Role | Route | PRD Requirement IDs | API / Data Dependencies | Permission Scope | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `02-staff/05-billing-invoices.png` | Billing & Invoices Queue | Receptionist / Manager / Owner | `/staff/billing` | `FR-PAY-01`, `FR-PAY-03`, `FR-PAY-04` | `GET /v1/staff/billing/queue`, `POST /v1/staff/bills/:id/payments` | `billing.view`, `billing.create`, `billing.verify_payment` | **Implemented** |
+| `02-staff/15-table-session-multiple-orders.png` | Multi-Order Table Session View | Receptionist / Manager / Owner | `/staff/billing` | `FR-PAY-01`, `FR-ORD-07` | `GET /v1/staff/billing/queue`, `POST /v1/staff/table-sessions/:id/bills` | `billing.view`, `billing.create` | **Implemented** |
+| `02-staff/16-consolidated-bill-payment-verification.png` | Consolidated Bill & UPI Verification | Receptionist / Manager / Owner | `/staff/billing` | `FR-PAY-01`, `FR-PAY-02`, `FR-PAY-04`, `FR-PAY-06` | `POST /v1/staff/table-sessions/:id/bills`, `POST /v1/staff/payments/:id/verify` | `billing.create`, `billing.verify_payment` | **Implemented** |
+| `02-staff/19-payment-verification-invoice-printing.png` | Payment Verification & Invoice Print | Receptionist / Manager / Owner | Modal in `/staff/billing` | `FR-PAY-04`, `FR-PAY-07` | `POST /v1/staff/payments/:id/verify`, `GET /v1/staff/bills/:id` | `billing.verify_payment`, `billing.view` | **Implemented** |
+| `03-owner/11-restaurant-profile-settings.png` | Branch UPI QR & Billing Settings | Owner / Manager | `/owner/settings` | `FR-PAY-02`, `FR-PAY-06` | `GET /v1/owner/payment-settings`, `PUT /v1/owner/payment-settings` | `OWNER`, `MANAGER`, `staff.manage` | **Implemented** |
+| `03-owner/23-branch-specific-configuration.png` | Outlet Tax & Payment Config | Owner / Manager | `/owner/settings` | `FR-PAY-02`, `FR-TEN-02` | `GET /v1/owner/payment-settings`, `PUT /v1/owner/payment-settings` | `OWNER`, `MANAGER` | **Implemented** |
+| `01-customer/04-order-tracking-desktop.png` | Diner Consolidated Bill & UPI Ref | Diner | `/[tenantSlug]/order/[orderId]` | `FR-PAY-02`, `FR-PAY-05` | `GET /v1/customer/sessions/:token/bill`, `POST /v1/customer/sessions/:token/bill/payment-reference` | Customer Session Token | **Implemented** |
+
 ---
 
 ## 113 UI References Traceability Matrix

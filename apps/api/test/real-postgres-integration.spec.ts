@@ -95,6 +95,7 @@ describe('Actual Native PostgreSQL 18.6 Integration Test Suite', () => {
       '20261117000004_phase_c1_remediations.sql',
       '20261117000005_phase_c1_verification_gate.sql',
       '20261117000006_phase_d_staff_kds.sql',
+      '20261117000007_phase_e_billing_payments.sql',
     ];
 
     for (const file of migrationFiles) {
@@ -510,6 +511,79 @@ describe('Actual Native PostgreSQL 18.6 Integration Test Suite', () => {
 
       const res = await adminClient.query(`SELECT status FROM orders WHERE id = '${testOrderId}'`);
       expect(res.rows[0].status).toBe('ACCEPTED'); // Kept prior committed status
+    });
+  });
+
+  // ============================================================================
+  // 9. Phase E: Restaurant Billing, RLS & Payment Separation Gate
+  // ============================================================================
+  describe('9. Restaurant Billing & Direct Payment Verification (Phase E)', () => {
+    it('verifies Phase E billing tables and partial unique index exist', async () => {
+      const tablesRes = await adminClient.query(`
+        SELECT table_name FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name IN (
+            'restaurant_payment_settings',
+            'restaurant_bills',
+            'bill_orders',
+            'bill_lines',
+            'restaurant_payments'
+          );
+      `);
+      expect(tablesRes.rows.length).toBe(5);
+    });
+
+    it('DENIES direct anonymous Supabase SELECT access to restaurant_bills, restaurant_payments, and restaurant_payment_settings', async () => {
+      await adminClient.query(`
+        INSERT INTO restaurant_payment_settings (tenant_id, location_id, upi_id, display_name, is_active)
+        VALUES ('11111111-1111-1111-1111-111111111111', 'aaaa1111-aaaa-1111-aaaa-111111111111', 'spice@okicici', 'Spice Garden', true)
+        ON CONFLICT (tenant_id, location_id) DO NOTHING;
+
+        INSERT INTO restaurant_bills (id, tenant_id, location_id, bill_number, status, currency, subtotal_minor, tax_minor, total_minor)
+        VALUES ('99991111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111111', 'aaaa1111-aaaa-1111-aaaa-111111111111', 'INV-REAL-001', 'UNPAID', 'INR', 15000, 0, 15000)
+        ON CONFLICT (id) DO NOTHING;
+
+        INSERT INTO restaurant_payments (id, tenant_id, location_id, bill_id, amount_minor, currency, method, status, reported_by_type, idempotency_key)
+        VALUES ('99992222-2222-2222-2222-222222222222', '11111111-1111-1111-1111-111111111111', 'aaaa1111-aaaa-1111-aaaa-111111111111', '99991111-1111-1111-1111-111111111111', 15000, 'INR', 'RESTAURANT_UPI_QR', 'PAYMENT_REPORTED', 'CUSTOMER_GUEST', 'pay-idemp-001')
+        ON CONFLICT (id) DO NOTHING;
+      `);
+
+      const billsAnon = await anonClient.query('SELECT * FROM restaurant_bills');
+      const paymentsAnon = await anonClient.query('SELECT * FROM restaurant_payments');
+      const settingsAnon = await anonClient.query('SELECT * FROM restaurant_payment_settings');
+
+      expect(billsAnon.rows.length).toBe(0);
+      expect(paymentsAnon.rows.length).toBe(0);
+      expect(settingsAnon.rows.length).toBe(0);
+    });
+
+    it('enforces uq_active_bill_per_session and uq_restaurant_payment_idempotency in actual PostgreSQL', async () => {
+      const sessId = '88881111-1111-1111-1111-111111111111';
+      await adminClient.query(`
+        INSERT INTO table_sessions (id, tenant_id, location_id, table_id, session_token, status)
+        VALUES ('${sessId}', '11111111-1111-1111-1111-111111111111', 'aaaa1111-aaaa-1111-aaaa-111111111111', 'a2222222-2222-2222-2222-222222222222', 'sess-tok-bill-test', 'OPEN')
+        ON CONFLICT (id) DO NOTHING;
+
+        INSERT INTO restaurant_bills (id, tenant_id, location_id, table_session_id, bill_number, status, currency, subtotal_minor, tax_minor, total_minor)
+        VALUES ('99993333-3333-3333-3333-333333333333', '11111111-1111-1111-1111-111111111111', 'aaaa1111-aaaa-1111-aaaa-111111111111', '${sessId}', 'INV-REAL-002', 'UNPAID', 'INR', 20000, 0, 20000)
+        ON CONFLICT (id) DO NOTHING;
+      `);
+
+      // Duplicate active bill for the same table session must fail with 23505
+      await expect(
+        adminClient.query(`
+          INSERT INTO restaurant_bills (tenant_id, location_id, table_session_id, bill_number, status, currency, subtotal_minor, tax_minor, total_minor)
+          VALUES ('11111111-1111-1111-1111-111111111111', 'aaaa1111-aaaa-1111-aaaa-111111111111', '${sessId}', 'INV-REAL-003', 'UNPAID', 'INR', 20000, 0, 20000);
+        `)
+      ).rejects.toMatchObject({ code: '23505' });
+
+      // Duplicate payment idempotency key for same tenant must fail with 23505
+      await expect(
+        adminClient.query(`
+          INSERT INTO restaurant_payments (tenant_id, location_id, bill_id, amount_minor, currency, method, status, reported_by_type, idempotency_key)
+          VALUES ('11111111-1111-1111-1111-111111111111', 'aaaa1111-aaaa-1111-aaaa-111111111111', '99991111-1111-1111-1111-111111111111', 15000, 'INR', 'RESTAURANT_UPI_QR', 'PAYMENT_REPORTED', 'CUSTOMER_GUEST', 'pay-idemp-001');
+        `)
+      ).rejects.toMatchObject({ code: '23505' });
     });
   });
 });

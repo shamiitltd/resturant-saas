@@ -14,6 +14,7 @@ export interface ResolveQrResponseDto {
   tableSessionId: string;
   sessionToken: string;
   currency: string;
+  taxRatePercent?: number | null;
 }
 
 export interface OrderItemSubmissionDto {

@@ -40,6 +40,7 @@ export class CustomerService {
       tenant_slug: string;
       tenant_name: string;
       tenant_status: string;
+      tax_rate_percent: string | number | null;
       location_id: string;
       location_name: string;
       location_status: string;
@@ -50,6 +51,7 @@ export class CustomerService {
     }>(
       `SELECT qt.id as qr_id, qt.status as qr_status, qt.expires_at,
               t.id as tenant_id, t.slug as tenant_slug, t.name as tenant_name, t.status as tenant_status,
+              t.tax_rate_percent as tax_rate_percent,
               l.id as location_id, l.name as location_name, l.status as location_status,
               rt.id as table_id, rt.table_code, rt.label as table_label, rt.status as table_status
        FROM qr_tokens qt
@@ -109,6 +111,10 @@ export class CustomerService {
       tableSessionId: session.id,
       sessionToken: session.sessionToken,
       currency: 'INR',
+      taxRatePercent:
+        row.tax_rate_percent !== null && row.tax_rate_percent !== undefined
+          ? Number(row.tax_rate_percent)
+          : null,
     };
   }
 

@@ -15,8 +15,16 @@ import {
   Loader2,
   AlertCircle,
   Sparkles,
+  QrCode,
+  ShieldCheck,
+  Send,
 } from 'lucide-react';
-import type { CustomerOrderResponseDto, TableSessionOrdersSummaryDto } from '@restaurant-saas/contracts';
+import { UpiQrCode } from '@/components/UpiQrCode';
+import type {
+  CustomerOrderResponseDto,
+  TableSessionOrdersSummaryDto,
+  CustomerBillSummaryDto,
+} from '@restaurant-saas/contracts';
 
 const STATUS_STEPS = [
   { key: 'PLACED', label: 'Order Sent', description: 'Received by kitchen' },
@@ -52,6 +60,11 @@ export default function OrderTrackingPage() {
 
   const [order, setOrder] = useState<CustomerOrderResponseDto | null>(null);
   const [sessionSummary, setSessionSummary] = useState<TableSessionOrdersSummaryDto | null>(null);
+  const [billSummary, setBillSummary] = useState<CustomerBillSummaryDto | null>(null);
+  const [sessionTokenState, setSessionTokenState] = useState<string | null>(null);
+  const [upiRefInput, setUpiRefInput] = useState('');
+  const [submittingRef, setSubmittingRef] = useState(false);
+  const [refFeedback, setRefFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<Date>(new Date());
@@ -70,6 +83,10 @@ export default function OrderTrackingPage() {
         // ignore
       }
 
+      if (sessionToken) {
+        setSessionTokenState(sessionToken);
+      }
+
       const headers: Record<string, string> = {};
       if (sessionToken) {
         headers['x-session-token'] = sessionToken;
@@ -80,15 +97,17 @@ export default function OrderTrackingPage() {
       });
       setOrder(orderData);
 
-      // Load session orders if session token exists
+      // Load session orders & consolidated bill if session token exists
       if (sessionToken) {
-        try {
-          const summary = await publicFetch<TableSessionOrdersSummaryDto>(
-            `/v1/customer/sessions/${sessionToken}/orders`
-          );
-          setSessionSummary(summary);
-        } catch {
-          // Non-fatal if session summary fails
+        const [summaryRes, billRes] = await Promise.allSettled([
+          publicFetch<TableSessionOrdersSummaryDto>(`/v1/customer/sessions/${sessionToken}/orders`),
+          publicFetch<CustomerBillSummaryDto>(`/v1/customer/sessions/${sessionToken}/bill`),
+        ]);
+        if (summaryRes.status === 'fulfilled') {
+          setSessionSummary(summaryRes.value);
+        }
+        if (billRes.status === 'fulfilled') {
+          setBillSummary(billRes.value);
         }
       }
 
@@ -226,21 +245,25 @@ export default function OrderTrackingPage() {
           <div className="space-y-6">
             {STATUS_STEPS.map((step, idx) => {
               const isPast = idx < currentStep;
-              const isCurrent = idx === currentStep;
+              const isCompletedFinal =
+                idx === STATUS_STEPS.length - 1 &&
+                (order.status === 'SERVED' || order.status === 'COMPLETED');
+              const isTicked = isPast || isCompletedFinal;
+              const isCurrent = idx === currentStep && !isCompletedFinal;
 
               return (
                 <div key={step.key} className="relative flex items-start gap-4">
                   {/* Step circle */}
                   <div
                     className={`relative z-10 flex h-8 w-8 items-center justify-center rounded-full border-2 transition ${
-                      isPast
+                      isTicked
                         ? 'border-orange-600 bg-orange-600 text-white'
                         : isCurrent
                         ? 'border-orange-600 bg-white text-orange-600 ring-4 ring-orange-100'
                         : 'border-slate-300 bg-white text-slate-400'
                     }`}
                   >
-                    {isPast ? (
+                    {isTicked ? (
                       <CheckCircle2 className="h-4 w-4" />
                     ) : (
                       <span className="text-xs font-bold">{idx + 1}</span>
@@ -250,7 +273,7 @@ export default function OrderTrackingPage() {
                   <div className="pt-0.5">
                     <span
                       className={`block text-sm font-bold ${
-                        isCurrent ? 'text-orange-900' : isPast ? 'text-slate-900' : 'text-slate-400'
+                        isCurrent ? 'text-orange-900' : isTicked ? 'text-slate-900' : 'text-slate-400'
                       }`}
                     >
                       {step.label}
@@ -338,6 +361,172 @@ export default function OrderTrackingPage() {
               </span>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Phase E: Consolidated Bill & Direct Restaurant UPI Payment (FR-PAY-02, FR-PAY-05) */}
+      {billSummary && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-xs mb-5 space-y-4">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-orange-50 text-[#DE5803]">
+                <QrCode className="h-4 w-4" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 text-sm">Consolidated Bill &amp; Payment</h3>
+                <p className="text-[11px] text-slate-500">
+                  {billSummary.bill ? `Bill ${billSummary.bill.billNumber}` : 'Live Table Session Total'}
+                </p>
+              </div>
+            </div>
+
+            {billSummary.bill?.status === 'VERIFIED_PAID' ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-bold text-emerald-800">
+                <ShieldCheck className="h-3.5 w-3.5" />
+                Verified Paid
+              </span>
+            ) : billSummary.bill?.status === 'PAYMENT_REPORTED' ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-blue-100 px-2.5 py-1 text-[11px] font-bold text-blue-800">
+                <Clock className="h-3.5 w-3.5" />
+                Awaiting Staff Verification
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-bold text-amber-800">
+                Unpaid
+              </span>
+            )}
+          </div>
+
+          <div className="rounded-xl bg-slate-50 p-3.5 space-y-1.5 text-xs">
+            <div className="flex justify-between text-slate-600">
+              <span>Items Subtotal</span>
+              <span className="font-semibold">₹{(billSummary.subtotalMinor / 100).toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-slate-600">
+              <span>
+                {billSummary.taxRatePercent !== null
+                  ? `Tax (GST ${billSummary.taxRatePercent}%)`
+                  : 'Tax (0%)'}
+              </span>
+              <span className="font-semibold">₹{(billSummary.taxMinor / 100).toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between items-baseline border-t border-slate-200 pt-2 font-extrabold text-sm text-slate-900">
+              <span>Total Payable to Restaurant</span>
+              <span className="text-base text-[#DE5803]">
+                ₹{(billSummary.totalMinor / 100).toFixed(2)}
+              </span>
+            </div>
+          </div>
+
+          {billSummary.bill?.status !== 'VERIFIED_PAID' && billSummary.paymentSettings?.isActive && (
+            <div className="rounded-xl border border-orange-100 bg-orange-50/40 p-4 space-y-3">
+              <div className="text-center">
+                <p className="text-xs font-bold text-slate-900">
+                  Pay Directly to {billSummary.paymentSettings.displayName || billSummary.tenantName}
+                </p>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  {billSummary.paymentSettings.instructions ||
+                    'Scan the restaurant UPI QR code with any UPI app and share your transaction reference below.'}
+                </p>
+              </div>
+
+              <UpiQrCode
+                upiId={billSummary.paymentSettings.upiId}
+                displayName={billSummary.paymentSettings.displayName || billSummary.tenantName}
+                amountMinor={billSummary.totalMinor}
+                currency={billSummary.currency}
+                qrAssetUrl={billSummary.paymentSettings.qrAssetUrl}
+                size={148}
+              />
+
+              {refFeedback && (
+                <div
+                  className={`rounded-lg px-3 py-2 text-xs font-semibold ${
+                    refFeedback.type === 'success'
+                      ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                      : 'bg-red-50 text-red-800 border border-red-200'
+                  }`}
+                >
+                  {refFeedback.message}
+                </div>
+              )}
+
+              {billSummary.bill?.status === 'PAYMENT_REPORTED' && (
+                <div className="rounded-lg border border-blue-200 bg-blue-50 p-2.5 text-[11px] text-blue-900">
+                  Reference submitted:{' '}
+                  <span className="font-mono font-bold">
+                    {billSummary.bill.payments.find((p) => p.status === 'PAYMENT_REPORTED')?.customerReference}
+                  </span>
+                  . Staff will confirm receipt in the restaurant&apos;s UPI/bank app shortly.
+                </div>
+              )}
+
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  if (!sessionTokenState || !upiRefInput.trim()) return;
+                  setSubmittingRef(true);
+                  setRefFeedback(null);
+                  try {
+                    const updated = await publicFetch<CustomerBillSummaryDto>(
+                      `/v1/customer/sessions/${sessionTokenState}/bill/payment-reference`,
+                      {
+                        method: 'POST',
+                        body: JSON.stringify({
+                          sessionToken: sessionTokenState,
+                          method: 'RESTAURANT_UPI_QR',
+                          customerReference: upiRefInput.trim(),
+                          idempotencyKey: `cust-upi-${billSummary.tableSessionId}-${Date.now()}`,
+                        }),
+                      }
+                    );
+                    setBillSummary(updated);
+                    setUpiRefInput('');
+                    setRefFeedback({
+                      type: 'success',
+                      message:
+                        'Reference sent to reception! Your bill remains pending until staff confirms receipt.',
+                    });
+                  } catch (err: any) {
+                    setRefFeedback({
+                      type: 'error',
+                      message: err.message || 'Could not submit UPI reference',
+                    });
+                  } finally {
+                    setSubmittingRef(false);
+                  }
+                }}
+                className="space-y-2 pt-1"
+              >
+                <label
+                  htmlFor="customer-upi-ref"
+                  className="block text-[11px] font-bold text-slate-700"
+                >
+                  Paid via UPI? Enter 12-digit UTR / Transaction Reference (optional)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    id="customer-upi-ref"
+                    type="text"
+                    value={upiRefInput}
+                    onChange={(e) => setUpiRefInput(e.target.value)}
+                    placeholder="e.g. 423116789045"
+                    minLength={4}
+                    maxLength={64}
+                    className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs text-slate-900 focus:border-[#DE5803] focus:outline-none"
+                  />
+                  <button
+                    type="submit"
+                    disabled={submittingRef || upiRefInput.trim().length < 4}
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-[#DE5803] px-3.5 py-2 text-xs font-bold text-white hover:bg-[#c54d02] disabled:opacity-50 transition"
+                  >
+                    <Send className="h-3.5 w-3.5" />
+                    <span>{submittingRef ? 'Sending...' : 'Notify Staff'}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
         </div>
       )}
 

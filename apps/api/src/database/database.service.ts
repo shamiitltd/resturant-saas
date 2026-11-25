@@ -15,11 +15,22 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit() {
     const connectionString = process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:54322/postgres';
+    let isLocal = false;
+    try {
+      const parsed = new URL(connectionString);
+      isLocal = ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname);
+    } catch {
+      isLocal = false;
+    }
+
     this.pool = new Pool({
       connectionString,
       max: 20,
       idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 5000,
+      connectionTimeoutMillis: 15000,
+      keepAlive: true,
+      keepAliveInitialDelayMillis: 10000,
+      ssl: isLocal ? undefined : { rejectUnauthorized: false },
     });
 
     this.pool.on('error', (err) => {
