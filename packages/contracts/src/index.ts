@@ -4,3 +4,5 @@ export * from './menu.dto.js';
 export * from './order.dto.js';
 export * from './staff.dto.js';
 export * from './billing.dto.js';
+export * from './tables.dto.js';
+export * from './reservations.dto.js';

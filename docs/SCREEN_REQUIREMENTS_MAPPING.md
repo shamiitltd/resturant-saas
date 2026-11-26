@@ -42,6 +42,19 @@ Use this document to connect every numbered UI reference to product behavior and
 | `03-owner/23-branch-specific-configuration.png` | Outlet Tax & Payment Config | Owner / Manager | `/owner/settings` | `FR-PAY-02`, `FR-TEN-02` | `GET /v1/owner/payment-settings`, `PUT /v1/owner/payment-settings` | `OWNER`, `MANAGER` | **Implemented** |
 | `01-customer/04-order-tracking-desktop.png` | Diner Consolidated Bill & UPI Ref | Diner | `/[tenantSlug]/order/[orderId]` | `FR-PAY-02`, `FR-PAY-05` | `GET /v1/customer/sessions/:token/bill`, `POST /v1/customer/sessions/:token/bill/payment-reference` | Customer Session Token | **Implemented** |
 
+## Phase F: Owner Table & QR Code Management Mapping
+| Asset Path | Screen Name | Role | Route | PRD Requirement IDs | API / Data Dependencies | Permission Scope | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `03-owner/40-table-floor-plan-management.png` | Table & Floor Plan Management | Owner / Manager | `/owner/tables` | `FR-OWN-02` | `GET /v1/owner/tables`, `POST /v1/owner/tables`, `PATCH /v1/owner/tables/:tableId` | `OWNER`, `MANAGER` | **Implemented** |
+| `03-owner/41-table-configuration-qr-code.png` | Table Configuration & QR Code | Owner / Manager | `/owner/tables` | `FR-OWN-02`, `FR-ORD-01` | `POST /v1/owner/tables/:tableId/rotate-qr` | `OWNER`, `MANAGER` | **Implemented** |
+
+## Phase G: Table Reservations & Walk-in Waitlist Management Mapping
+| Asset Path | Screen Name | Role | Route | PRD Requirement IDs | API / Data Dependencies | Permission Scope | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `03-owner/43-table-reservations-booking-calendar.png` | Table Reservations & Booking Calendar | Owner / Manager | `/owner/reservations` | `FR-RES-01`, `FR-RES-02` | `GET /v1/owner/reservations`, `POST /v1/owner/reservations`, `PATCH /v1/owner/reservations/:id` | `reservations.view`, `reservations.manage` | **Implemented** |
+| `03-owner/44-waitlist-walkin-guest-management.png` | Waitlist & Walk-in Guest Management | Owner / Manager | `/owner/reservations` | `FR-RES-03`, `FR-RES-04` | `GET /v1/owner/waitlist`, `POST /v1/owner/waitlist`, `PATCH /v1/owner/waitlist/:id` | `reservations.view`, `reservations.manage` | **Implemented** |
+| `02-staff/07-reservations-table-booking.png` | Staff Reservations & Table Booking | Receptionist / Manager / Staff | `/staff/reservations` | `FR-RES-01`, `FR-RES-03` | `GET /v1/staff/reservations`, `POST /v1/staff/reservations`, `PATCH /v1/staff/reservations/:id` | `reservations.view`, `reservations.manage` | **Implemented** |
+
 ---
 
 ## 113 UI References Traceability Matrix

@@ -17,3 +17,60 @@ body {
   background-color: #F8FAFC;
   -webkit-font-smoothing: antialiased;
 }
+
+/* ==============================================================================
+   CUSTOM SCROLLBAR STYLING FOR MAIN CONTENT & WORKSPACE
+   ============================================================================== */
+
+/* Modern WebKit browsers (Chrome, Edge, Safari, Brave, Opera) */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: #cbd5e1; /* slate-300 */
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+  transition: background-color 0.2s ease-in-out;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: #94a3b8; /* slate-400 */
+}
+
+::-webkit-scrollbar-thumb:active {
+  background-color: #64748b; /* slate-500 */
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* Firefox scrollbar customization */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+/* ==============================================================================
+   HIDE SCROLLBAR UTILITIES (Smooth scrolling without visual scrollbar)
+   ============================================================================== */
+.no-scrollbar::-webkit-scrollbar,
+.scrollbar-none::-webkit-scrollbar {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent !important;
+}
+
+.no-scrollbar,
+.scrollbar-none {
+  -ms-overflow-style: none !important; /* IE and Edge */
+  scrollbar-width: none !important; /* Firefox */
+}

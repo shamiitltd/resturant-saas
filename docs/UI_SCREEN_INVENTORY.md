@@ -71,3 +71,16 @@ References 104–113 (confirmed from the current design sequence):
 | `03-owner/11-restaurant-profile-settings.png` | Branch Billing & UPI Payment Settings | Owner / Manager | `/owner/settings` | `GET /v1/owner/payment-settings`, `PUT /v1/owner/payment-settings` | **Implemented** |
 | `03-owner/23-branch-specific-configuration.png` | Outlet Payment & Tax Configuration | Owner / Manager | `/owner/settings` | `GET /v1/owner/payment-settings`, `PUT /v1/owner/payment-settings` | **Implemented** |
 | `01-customer/04-order-tracking-desktop.png` | Customer Consolidated Bill & UPI Reference Submission | Diner | `/[tenantSlug]/order/[orderId]` | `GET /v1/customer/sessions/:token/bill`, `POST /v1/customer/sessions/:token/bill/payment-reference` | **Implemented** |
+
+## Implemented Owner Table & QR Code Management Screens (Phase F)
+| Ref/Asset | Screen Name | Role | Route | Backend API Dependency | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `03-owner/40-table-floor-plan-management.png` | Table & Floor Plan Management | Owner / Manager | `/owner/tables` | `GET /v1/owner/tables`, `POST /v1/owner/tables`, `PATCH /v1/owner/tables/:tableId` | **Implemented** |
+| `03-owner/41-table-configuration-qr-code.png` | Table Configuration & QR Code | Owner / Manager | `/owner/tables` | `GET /v1/owner/tables`, `POST /v1/owner/tables/:tableId/rotate-qr` | **Implemented** |
+
+## Implemented Table Reservations & Walk-in Waitlist Screens (Phase G)
+| Ref/Asset | Screen Name | Role | Route | Backend API Dependency | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `03-owner/43-table-reservations-booking-calendar.png` | Table Reservations & Booking Calendar | Owner / Manager | `/owner/reservations` | `GET /v1/owner/reservations`, `POST /v1/owner/reservations`, `PATCH /v1/owner/reservations/:id` | **Implemented** |
+| `03-owner/44-waitlist-walkin-guest-management.png` | Waitlist & Walk-in Guest Management | Owner / Manager | `/owner/reservations` | `GET /v1/owner/waitlist`, `POST /v1/owner/waitlist`, `PATCH /v1/owner/waitlist/:id` | **Implemented** |
+| `02-staff/07-reservations-table-booking.png` | Staff Reservations & Table Booking Workspace | Receptionist / Manager / Staff | `/staff/reservations` | `GET /v1/staff/reservations`, `POST /v1/staff/reservations`, `PATCH /v1/staff/reservations/:id` | **Implemented** |

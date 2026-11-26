@@ -34,7 +34,8 @@ const OWNER_NAV_ITEMS = [
   { href: '/owner/menu', label: 'Menu Management', icon: UtensilsCrossed },
   { href: '/owner/inventory', label: 'Inventory', icon: BookOpen },
   { href: '/owner/staff', label: 'Staff & Roles', icon: Users2 },
-  { href: '/owner/tables', label: 'Tables & Reservations', icon: Layers },
+  { href: '/owner/tables', label: 'Tables & QR', icon: Layers },
+  { href: '/owner/reservations', label: 'Reservations & Waitlist', icon: Calendar },
   { href: '/owner/marketplace', label: 'Marketplace', icon: Store },
   { href: '/owner/loyalty', label: 'Customers & Loyalty', icon: HeartHandshake },
   { href: '/owner/outlets', label: 'Outlets & Branches', icon: GitFork },
@@ -92,7 +93,7 @@ export default function OwnerLayout({
       {/* Left Sidebar (Fixed 256px, locked strictly on the left side matching 01-owner-dashboard-overview.png) */}
       <aside
         suppressHydrationWarning
-        className={`fixed inset-y-0 left-0 z-50 w-64 shrink-0 bg-[#181111] text-slate-300 flex flex-col justify-between p-4 transition-transform duration-200 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-50 w-64 shrink-0 bg-[#181111] text-slate-300 flex flex-col justify-between p-4 transition-transform duration-200 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0 no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden ${
           mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -119,7 +120,7 @@ export default function OwnerLayout({
           </div>
 
           {/* Navigation Links */}
-          <nav className="space-y-1 text-xs font-medium pt-1 max-h-[calc(100vh-230px)] overflow-y-auto pr-1">
+          <nav className="space-y-1 text-xs font-medium pt-1 max-h-[calc(100vh-230px)] overflow-y-auto no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             {OWNER_NAV_ITEMS.map((item) => {
               const Icon = item.icon;
               const isActive =

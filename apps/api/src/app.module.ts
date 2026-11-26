@@ -8,6 +8,8 @@ import { MenuModule } from './modules/menu/menu.module.js';
 import { AnalyticsModule } from './modules/analytics/analytics.module.js';
 import { StaffManagementModule } from './modules/staff-management/staff-management.module.js';
 import { BillingModule } from './modules/billing/billing.module.js';
+import { TablesModule } from './modules/tables/tables.module.js';
+import { ReservationsModule } from './modules/reservations/reservations.module.js';
 import { PlatformController } from './modules/platform/platform.controller.js';
 import { TenantContextMiddleware } from './modules/tenant/tenant-context.middleware.js';
 
@@ -22,6 +24,8 @@ import { TenantContextMiddleware } from './modules/tenant/tenant-context.middlew
     AnalyticsModule,
     StaffManagementModule,
     BillingModule,
+    TablesModule,
+    ReservationsModule,
   ],
   controllers: [PlatformController],
 })
