@@ -48,12 +48,14 @@ export class CustomerService {
       table_code: string;
       table_label: string;
       table_status: string;
+      allow_qr_ordering: boolean;
     }>(
       `SELECT qt.id as qr_id, qt.status as qr_status, qt.expires_at,
               t.id as tenant_id, t.slug as tenant_slug, t.name as tenant_name, t.status as tenant_status,
               t.tax_rate_percent as tax_rate_percent,
               l.id as location_id, l.name as location_name, l.status as location_status,
-              rt.id as table_id, rt.table_code, rt.label as table_label, rt.status as table_status
+              rt.id as table_id, rt.table_code, rt.label as table_label, rt.status as table_status,
+              COALESCE(rt.allow_qr_ordering, true) as allow_qr_ordering
        FROM qr_tokens qt
        JOIN restaurant_tables rt ON rt.id = qt.table_id
        JOIN locations l ON l.id = qt.location_id
@@ -86,10 +88,15 @@ export class CustomerService {
       throw new ForbiddenException('Restaurant branch is currently not accepting orders.');
     }
 
-    // SEC-QR-02: Check table status
+    // SEC-QR-02: Check table status & QR ordering toggle
     if (row.table_status === 'OUT_OF_SERVICE' || row.table_status === 'INACTIVE') {
       throw new ForbiddenException(
         `Table is currently ${row.table_status.toLowerCase().replace('_', ' ')}. Please ask staff for seating assistance.`
+      );
+    }
+    if (!row.allow_qr_ordering) {
+      throw new ForbiddenException(
+        'QR ordering is currently disabled for this table. Please ask staff to take your order.'
       );
     }
 

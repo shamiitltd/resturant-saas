@@ -7,6 +7,7 @@ const nextConfig = {
       { source: '/staff/kitchen', destination: '/kitchen' },
       { source: '/staff/reception', destination: '/reception' },
       { source: '/staff/billing', destination: '/billing' },
+      { source: '/staff/reservations', destination: '/reservations' },
       { source: '/staff/waiter', destination: '/waiter' },
     ];
   },

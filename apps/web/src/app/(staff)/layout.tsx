@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { ChefHat, ClipboardList, User, Receipt, MapPin, LogOut } from 'lucide-react';
+import { ChefHat, ClipboardList, User, Receipt, MapPin, LogOut, Calendar } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { fetchWithAuth } from '@/lib/api';
 import type { AuthMeResponseDto } from '@restaurant-saas/contracts';
@@ -21,6 +21,12 @@ const ALL_STATIONS: StationLink[] = [
     label: 'Reception',
     icon: ClipboardList,
     roles: ['RECEPTIONIST', 'MANAGER', 'OWNER', 'PLATFORM_ADMIN'],
+  },
+  {
+    href: '/staff/reservations',
+    label: 'Reservations',
+    icon: Calendar,
+    roles: ['RECEPTIONIST', 'MANAGER', 'OWNER', 'WAITER', 'PLATFORM_ADMIN'],
   },
   {
     href: '/staff/billing',

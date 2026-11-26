@@ -1205,6 +1205,17 @@ export class BillingService {
            WHERE id = $1 AND status = 'OCCUPIED'`,
           [tableId]
         );
+        // Automatically transition active SEATED reservations & waitlist entries for this table to COMPLETED
+        await client.query(
+          `UPDATE table_reservations SET status = 'COMPLETED', updated_at = now()
+           WHERE table_id = $1 AND status = 'SEATED' AND reservation_date = CURRENT_DATE`,
+          [tableId]
+        );
+        await client.query(
+          `UPDATE table_waitlist SET status = 'COMPLETED', updated_at = now()
+           WHERE assigned_table_id = $1 AND status = 'SEATED'`,
+          [tableId]
+        );
       }
     }
   }
